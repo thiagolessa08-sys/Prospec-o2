@@ -411,7 +411,7 @@ export default function Home() {
                       {
                         icon: Building2,
                         title: 'Seleciona 10 empresas',
-                        text: 'Busca na Lusha e explica a afinidade de cada empresa.',
+                        text: 'Busca empresas e decisores em uma única consulta econômica.',
                       },
                       {
                         icon: Users,
@@ -438,7 +438,7 @@ export default function Home() {
                   </ol>
                   <div className="process-footer">
                     <Target size={17} />
-                    <span>Até 10 empresas · 1 contato por empresa</span>
+                    <span>Até 10 empresas · modo econômico de 12 créditos</span>
                   </div>
                 </section>
                 <section className="connection-summary">

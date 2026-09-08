@@ -15,7 +15,7 @@ export class ProviderError extends AppError {
     const meanings: Record<number, string> = {
       400: 'a consulta não foi aceita; revise os dados e a configuração',
       401: 'chave inválida ou expirada; atualize em Conexões',
-      402: 'créditos insuficientes',
+      402: 'créditos insuficientes para esta etapa; confira o saldo e os limites da chave',
       403: 'sua conta não tem acesso a este recurso; verifique o plano ou o domínio do remetente',
       404: 'recurso não encontrado',
       422: 'verifique os dados e o domínio do remetente',

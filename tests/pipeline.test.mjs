@@ -62,44 +62,42 @@ function mockProviders(options = {}) {
         ],
       });
     if (url.endsWith('/companies/prospecting')) {
+      throw new Error(
+        'The economic flow must not prospect companies separately',
+      );
+    }
+    if (url.endsWith('/companies/enrich')) {
+      throw new Error('The economic flow must not enrich companies separately');
+    }
+    if (url.endsWith('/contacts/prospecting')) {
       assert.deepEqual(body.filters.companies.include.mainIndustriesIds, [22]);
       assert.equal(
         body.filters.companies.include.locations[0].country,
         'Brazil',
       );
+      assert.equal(body.pagination.size, 25);
+      assert.equal(body.options.maxContactsPerCompany, 1);
+      assert.equal(body.options.excludeDnc, true);
+      assert.deepEqual(body.filters.contacts.include.existingDataPoints, [
+        'work_email',
+      ]);
+      assert.deepEqual(body.filters.contacts.include.jobTitles, [
+        'Operations Director',
+        'Diretor de Operações',
+      ]);
       return reply({
         results: Array.from({ length: options.companyCount ?? 12 }, (_, i) => ({
-          id: `co${i}`,
-          name: `Empresa Teste ${i}`,
-          domain: `empresa${i}.example.com`,
-          industry: 'Retail',
-          location: { country: 'Brazil' },
-        })),
-      });
-    }
-    if (url.endsWith('/companies/enrich'))
-      return reply({
-        results: body.ids.map((id, i) => ({
-          id,
-          name: `Empresa Teste ${i}`,
-          domain: `empresa${i}.example.com`,
-          industry: 'Retail',
-          description: 'Rede de varejo com lojas físicas.',
-          location: { country: 'Brazil' },
-        })),
-      });
-    if (url.endsWith('/contacts/prospecting')) {
-      const id = body.filters.companies.include.ids[0];
-      return reply({
-        results: [
-          {
-            id: `person-${id}`,
-            firstName: 'Pessoa',
-            lastName: id,
-            jobTitle: { title: 'Diretora de Operações' },
-            company: { id },
+          id: `person-${i}`,
+          firstName: 'Pessoa',
+          lastName: String(i),
+          jobTitle: { title: 'Diretora de Operações' },
+          company: {
+            id: `co${i}`,
+            name: `Empresa Teste ${i}`,
+            domain: `empresa${i}.example.com`,
           },
-        ],
+          location: { country: 'Brazil' },
+        })),
       });
     }
     if (url.endsWith('/contacts/enrich'))
@@ -108,7 +106,10 @@ function mockProviders(options = {}) {
           id,
           fullName: `Pessoa ${id}`,
           jobTitle: { title: 'Diretora de Operações' },
-          company: { id: id.replace('person-', '') },
+          company: {
+            id: `co${id.replace('person-', '')}`,
+            domain: `empresa${id.replace('person-', '')}.example.com`,
+          },
           emails: [
             {
               email: `${id}@example.com`,
@@ -141,16 +142,13 @@ function mockProviders(options = {}) {
           break;
         case 'empresas_compativeis':
           value = {
-            choices: prompt.companies.slice(0, 10).map((c) => ({
-              id: c.id,
+            choices: prompt.candidates.slice(0, 10).map((candidate) => ({
+              id: candidate.contactId,
               score: 80,
               reason:
                 'A operação de varejo pode se beneficiar da integração dos estoques.',
             })),
           };
-          break;
-        case 'contato_relevante':
-          value = { ids: prompt.candidates.slice(0, 1).map((c) => c.id) };
           break;
         case 'email_personalizado':
           value = {
@@ -190,6 +188,24 @@ test('full campaign: 10 real provider records, unique contacts, personalized dra
   assert.equal(c.stage, 'review');
   assert.equal(c.leads.length, 10);
   assert.equal(new Set(c.leads.map((l) => l.email)).size, 10);
+  const prospecting = calls.filter((x) =>
+    x.url.endsWith('/contacts/prospecting'),
+  );
+  const enrichment = calls.filter((x) => x.url.endsWith('/contacts/enrich'));
+  assert.equal(prospecting.length, 1);
+  assert.equal(enrichment.length, 1);
+  assert.equal(enrichment[0].body.ids.length, 10);
+  assert.equal(
+    calls.some(
+      (x) =>
+        x.url.endsWith('/companies/prospecting') ||
+        x.url.endsWith('/companies/enrich'),
+    ),
+    false,
+  );
+  const expectedLushaCredits =
+    Math.ceil(25 / 25) + Math.ceil(enrichment[0].body.ids.length / 25) + 10;
+  assert.equal(expectedLushaCredits, 12);
   assert.equal(calls.filter((x) => x.url.endsWith('/emails')).length, 0);
   for (const lead of c.leads) {
     assert.equal(lead.status, 'ready');
@@ -226,18 +242,18 @@ test('personal-only email results are never sent or replaced with invented addre
   assert.equal(done.leads[0].email, undefined);
   assert.equal(calls.filter((x) => x.url.endsWith('/emails')).length, 0);
 });
-test('unknown industry identifiers stop before any paid company search', async () => {
+test('unknown industry identifiers stop before any paid contact search', async () => {
   const calls = mockProviders({ invalidIndustry: true });
   await assert.rejects(
     () => advance(makeCampaign(), keys, memoryStore()),
     /setor inválido/,
   );
   assert.equal(
-    calls.some((x) => x.url.endsWith('/companies/prospecting')),
+    calls.some((x) => x.url.endsWith('/contacts/prospecting')),
     false,
   );
 });
-test('empty company search is an honest terminal result', async () => {
+test('empty decision-maker search is an honest terminal result', async () => {
   mockProviders({ companyCount: 0 });
   const c = await untilPaused(makeCampaign(), memoryStore());
   assert.equal(c.stage, 'done');

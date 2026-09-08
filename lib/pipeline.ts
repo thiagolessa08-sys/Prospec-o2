@@ -6,7 +6,6 @@ import {
   str,
   lusha,
   results,
-  company,
   workEmail,
   industryIds,
   ProviderError,
@@ -181,215 +180,166 @@ export async function advance(
     c.note = 'Perfil de cliente definido. Preparando a busca de empresas.';
   } else if (c.stage === 'companies') {
     if (!c.profile) throw new AppError('Perfil da campanha não encontrado.');
-    if (c.cursor === 0) {
-      const include: Json = { mainIndustriesIds: c.profile.industryIds };
-      if (c.profile.country)
-        include.locations = [{ country: c.profile.country }];
-      if (c.profile.minEmployees || c.profile.maxEmployees)
-        include.sizes = [
-          {
-            ...(c.profile.minEmployees ? { min: c.profile.minEmployees } : {}),
-            ...(c.profile.maxEmployees ? { max: c.profile.maxEmployees } : {}),
-          },
-        ];
-      const data = await lusha(keys.lushaKey, 'companies/prospecting', {
-        pagination: { page: 0, size: 30 },
-        filters: { companies: { include } },
-      });
-      const seen = new Set<string>();
-      c.candidates = results(data)
-        .map(company)
-        .filter((v) => {
-          if (!v) return false;
-          const id = v.domain || v.id;
-          if (seen.has(id)) return false;
-          seen.add(id);
-          return true;
-        }) as NonNullable<Campaign['candidates']>;
-      if (!c.candidates.length) {
-        c.stage = 'done';
-        c.note =
-          'A Lusha não retornou empresas para este perfil. Crie uma campanha com um mercado mais amplo.';
-        return c;
-      }
-      c.cursor = 1;
-      c.note = `${c.candidates.length} empresas encontradas na Lusha. Buscando contexto para a seleção.`;
-    } else if (c.cursor === 1) {
-      const enriched = results(
-        await lusha(keys.lushaKey, 'companies/enrich', {
-          ids: c.candidates!.map((v) => v.id),
-        }),
-      );
-      const map = new Map(enriched.map((v) => [String(v.id), v]));
-      c.candidates = c.candidates!.flatMap((v) => {
-        const raw = map.get(v.id);
-        if (raw?.error) return [];
-        const full = raw ? company(raw) : null;
-        return [{ ...v, ...full }];
-      });
-      c.cursor = 2;
-      c.note =
-        'Contexto das empresas reunido. A IA está avaliando a compatibilidade.';
-    } else {
-      if (!c.candidates?.length) {
-        c.stage = 'done';
-        c.note = 'Não foi possível enriquecer as empresas encontradas.';
-        return c;
-      }
-      const ranked = await ai<{
-        choices: { id: string; score: number; reason: string }[];
-      }>(
-        keys.anthropicKey,
-        'empresas_compativeis',
-        obj({
-          choices: arr(
-            obj({
-              id: { type: 'string', enum: c.candidates.map((v) => v.id) },
-              score: { type: 'integer', minimum: 0, maximum: 100 },
-              reason: str,
-            }),
-          ),
-        }),
-        'Selecione as 10 empresas com melhor adequação ao software e mercado. Use somente as candidatas fornecidas. Retorne menos apenas se houver menos de 10 relevantes. Não inclua concorrentes diretos ou empresas fora de restrições explícitas. Score é estimativa de adequação, não intenção de compra: inclua apenas score >= 60. Explique em até 350 caracteres conectando um fato fornecido ao benefício potencial. Não afirme que a empresa tem uma dor, usa certa ferramenta ou está comprando sem evidência. Retorne IDs únicos por ordem de adequação.',
-        { input: c.input, profile: c.profile, companies: c.candidates },
-      );
-      const seen = new Set<string>();
-      c.leads = ranked.choices
-        .filter((v) => {
-          if (v.score < 60 || seen.has(v.id)) return false;
-          seen.add(v.id);
-          return true;
-        })
-        .slice(0, 10)
-        .map((v) => {
-          const comp = c.candidates!.find((x) => x.id === v.id);
-          if (!comp)
-            throw new AppError('A IA retornou uma empresa fora da busca.', 502);
-          return {
-            id: crypto.randomUUID(),
-            company: comp,
-            reason: v.reason,
-            score: v.score,
-            status: 'pending',
-          };
-        });
-      delete c.candidates;
-      c.cursor = 0;
-      c.stage = c.leads.length ? 'contacts' : 'done';
-      c.note = `${c.leads.length} de 10 empresas selecionadas com base nos dados da Lusha.${c.leads.length < 10 ? ' A busca não encontrou 10 empresas com adequação suficiente.' : ''}`;
-    }
-  } else if (c.stage === 'contacts') {
-    const lead = c.leads[c.cursor];
-    if (!lead) {
-      c.stage = 'drafts';
-      c.cursor = 0;
-      return c;
-    }
-    // Work email requirement avoids personal addresses and unverified guessed patterns.
+    const companyFilters: Json = { mainIndustriesIds: c.profile.industryIds };
+    if (c.profile.country)
+      companyFilters.locations = [{ country: c.profile.country }];
+    if (c.profile.minEmployees || c.profile.maxEmployees)
+      companyFilters.sizes = [
+        {
+          ...(c.profile.minEmployees ? { min: c.profile.minEmployees } : {}),
+          ...(c.profile.maxEmployees ? { max: c.profile.maxEmployees } : {}),
+        },
+      ];
+
+    // One bulk prospecting call yields a decision-maker preview and its company.
+    // This replaces 30 company enrichments plus one contact search per company.
     const search = await lusha(keys.lushaKey, 'contacts/prospecting', {
-      pagination: { page: 0, size: 5 },
+      pagination: { page: 0, size: 25 },
       filters: {
-        companies: { include: { ids: [lead.company.id] } },
+        companies: { include: companyFilters },
         contacts: {
           include: {
-            jobTitles: c.profile!.titles,
+            jobTitles: c.profile.titles,
             existingDataPoints: ['work_email'],
           },
         },
       },
-      options: { maxContactsPerCompany: 5 },
+      options: { maxContactsPerCompany: 1, excludeDnc: true },
     });
-    const candidates = results(search).filter(
-      (v) =>
-        !v.error &&
-        v.id &&
-        (String(v.company?.id) === lead.company.id ||
-          (lead.company.domain &&
-            safeDomain(v.company?.domain) === lead.company.domain)),
-    );
-    if (!candidates.length) {
-      lead.status = 'skipped';
-      lead.issue =
-        'Nenhum contato com cargo relevante e e-mail profissional disponível nesta busca.';
-    } else {
-      const choice = await ai<{ ids: string[] }>(
-        keys.anthropicKey,
-        'contato_relevante',
-        obj({
-          ids: arr({
-            type: 'string',
-            enum: candidates.map((v) => String(v.id)),
-          }),
-        }),
-        'Escolha até 3 contatos mais relevantes para uma conversa comercial sobre este produto, em ordem. Considere cargo e possível participação na decisão. Retorne IDs únicos, somente dos candidatos. Se nenhum cargo for relevante, retorne lista vazia.',
+    const seenCompanies = new Set<string>();
+    const candidates = results(search).flatMap((raw) => {
+      const companyId = String(raw.company?.id || '');
+      const contactId = String(raw.id || '');
+      const name = [raw.firstName, raw.lastName]
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+      const companyName = String(raw.company?.name || '').trim();
+      const domain = safeDomain(raw.company?.domain);
+      const companyKey = domain || companyId;
+      if (
+        raw.error ||
+        !companyId ||
+        !contactId ||
+        !name ||
+        !companyName ||
+        !companyKey ||
+        seenCompanies.has(companyKey)
+      )
+        return [];
+      seenCompanies.add(companyKey);
+      return [
         {
-          software: c.input.description,
-          company: lead.company,
-          candidates: candidates.map((v) => ({
-            id: String(v.id),
-            name: [v.firstName, v.lastName].filter(Boolean).join(' '),
-            title: v.jobTitle,
-          })),
+          contactId,
+          contactName: name,
+          contactTitle: String(raw.jobTitle?.title || ''),
+          contactLocation: raw.location || {},
+          company: {
+            id: companyId,
+            name: companyName.slice(0, 300),
+            domain,
+            description: '',
+            industry: c.profile!.industries.join(', ').slice(0, 300),
+            country: c.profile!.country,
+            employees:
+              c.profile!.minEmployees || c.profile!.maxEmployees
+                ? `${c.profile!.minEmployees || 1}–${c.profile!.maxEmployees || '+'}`
+                : '',
+          },
         },
-      );
-      const ids = [...new Set(choice.ids)]
-        .filter((id) => candidates.some((v) => String(v.id) === id))
-        .slice(0, 3);
-      if (ids.length) {
-        const enriched = results(
-          await lusha(keys.lushaKey, 'contacts/enrich', {
-            ids,
-            reveal: ['emails'],
-            waterfallEnabled: false,
-          }),
-        );
-        for (const id of ids) {
-          const raw = enriched.find((v) => String(v.id) === id);
-          if (!raw || raw.error) continue;
-          if (
-            String(raw.company?.id) !== lead.company.id &&
-            (!lead.company.domain ||
-              safeDomain(raw.company?.domain) !== lead.company.domain)
-          )
-            continue;
-          const email = workEmail(raw);
-          if (
-            !email ||
-            c.leads.some((v) => v.id !== lead.id && v.email === email)
-          )
-            continue;
-          const source = candidates.find((v) => String(v.id) === id)!;
-          const name = String(
-            raw.fullName ||
-              [
-                raw.firstName || source.firstName,
-                raw.lastName || source.lastName,
-              ]
-                .filter(Boolean)
-                .join(' '),
-          );
-          if (!name.trim()) continue;
-          lead.contact = {
-            id,
-            name,
-            title: String(raw.jobTitle?.title || source.jobTitle?.title || ''),
-          };
-          lead.email = email;
-          break;
-        }
-      }
-      if (!lead.email) {
-        lead.status = 'skipped';
-        lead.issue =
-          'Nenhum e-mail profissional utilizável foi retornado para os contatos relevantes.';
-      }
+      ];
+    });
+    if (!candidates.length) {
+      c.stage = 'done';
+      c.note =
+        'A Lusha não retornou decisores com e-mail profissional disponível para este perfil. Crie uma campanha com um mercado mais amplo.';
+      return c;
     }
-    c.cursor++;
-    c.note = `Contatos verificados em ${c.cursor} de ${c.leads.length} empresas.`;
-    if (c.cursor >= c.leads.length) {
+    const ranked = await ai<{
+      choices: { id: string; score: number; reason: string }[];
+    }>(
+      keys.anthropicKey,
+      'empresas_compativeis',
+      obj({
+        choices: arr(
+          obj({
+            id: { type: 'string', enum: candidates.map((v) => v.contactId) },
+            score: { type: 'integer', minimum: 0, maximum: 100 },
+            reason: str,
+          }),
+        ),
+      }),
+      'Selecione até 10 empresas e respectivos decisores com melhor adequação ao software e mercado. Use somente as candidatas fornecidas e IDs únicos. Todas as candidatas já correspondem aos filtros de setor, porte e região do perfil; use isso e o cargo como evidência. Score é uma estimativa de adequação, não intenção de compra: inclua apenas score >= 60. Explique em até 350 caracteres sem afirmar dores confirmadas, intenção de compra, notícias, tecnologias ou fatos que não foram fornecidos.',
+      { input: c.input, profile: c.profile, candidates },
+    );
+    const selected = new Set<string>();
+    c.leads = ranked.choices
+      .filter((choice) => {
+        if (choice.score < 60 || selected.has(choice.id)) return false;
+        selected.add(choice.id);
+        return true;
+      })
+      .slice(0, 10)
+      .map((choice) => {
+        const candidate = candidates.find((v) => v.contactId === choice.id);
+        if (!candidate)
+          throw new AppError('A IA retornou um contato fora da busca.', 502);
+        return {
+          id: crypto.randomUUID(),
+          company: candidate.company,
+          contact: {
+            id: candidate.contactId,
+            name: candidate.contactName,
+            title: candidate.contactTitle,
+          },
+          reason: choice.reason,
+          score: choice.score,
+          status: 'pending',
+        };
+      });
+    delete c.candidates;
+    c.cursor = 0;
+    c.stage = c.leads.length ? 'contacts' : 'done';
+    c.note = `${c.leads.length} de 10 empresas e decisores selecionados em uma única busca econômica.${c.leads.length < 10 ? ' Não havia 10 resultados com adequação suficiente.' : ''}`;
+  } else if (c.stage === 'contacts') {
+    const pending = c.leads.filter(
+      (lead) => lead.status === 'pending' && lead.contact?.id,
+    );
+    if (!pending.length) {
       c.stage = 'drafts';
       c.cursor = 0;
+      return c;
     }
+    // A single bulk reveal keeps ten new work e-mails within a 12-credit budget:
+    // one prospecting result block + one enrich result block + ten e-mail fields.
+    const enriched = results(
+      await lusha(keys.lushaKey, 'contacts/enrich', {
+        ids: pending.map((lead) => lead.contact!.id),
+        reveal: ['emails'],
+        waterfallEnabled: false,
+      }),
+    );
+    const usedEmails = new Set<string>();
+    for (const lead of pending) {
+      const raw = enriched.find((v) => String(v.id) === lead.contact!.id);
+      const sameCompany =
+        raw &&
+        (String(raw.company?.id) === lead.company.id ||
+          (lead.company.domain &&
+            safeDomain(raw.company?.domain) === lead.company.domain));
+      const email = sameCompany ? workEmail(raw) : undefined;
+      if (email && !usedEmails.has(email)) {
+        lead.email = email;
+        usedEmails.add(email);
+      } else {
+        lead.status = 'skipped';
+        lead.issue =
+          'A Lusha não retornou um e-mail profissional utilizável para este contato.';
+      }
+    }
+    c.stage = 'drafts';
+    c.cursor = 0;
+    c.note = `${c.leads.filter((lead) => lead.email).length} e-mail(s) profissional(is) revelado(s) em uma única consulta.`;
   } else if (c.stage === 'drafts') {
     const lead = c.leads[c.cursor];
     if (lead?.email && lead.contact && lead.status === 'pending') {
