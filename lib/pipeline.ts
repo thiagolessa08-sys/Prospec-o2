@@ -31,6 +31,32 @@ const profileSchema = obj({
   maxEmployees: integer,
 });
 
+export function explicitEmployeeRange(text: string) {
+  const normalized = text.toLowerCase().replace(/\./g, '');
+  const employee = '(?:funcionários|funcionarios|colaboradores|employees)';
+  const range = normalized.match(
+    new RegExp(
+      `(?:entre\\s+)?(\\d{1,7})\\s*(?:a|e|até|ate|[-–])\\s*(\\d{1,7})\\s+${employee}`,
+    ),
+  );
+  if (range) return { min: Number(range[1]), max: Number(range[2]) };
+  const minimum = normalized.match(
+    new RegExp(
+      `(?:mais de|acima de|mínimo de|minimo de|a partir de)\\s*(\\d{1,7})\\s+${employee}`,
+    ),
+  );
+  const plus = normalized.match(new RegExp(`(\\d{1,7})\\+\\s*${employee}`));
+  const maximum = normalized.match(
+    new RegExp(
+      `(?:até|ate|menos de|máximo de|maximo de)\\s*(\\d{1,7})\\s+${employee}`,
+    ),
+  );
+  return {
+    min: Number(minimum?.[1] || plus?.[1] || 0),
+    max: Number(maximum?.[1] || 0),
+  };
+}
+
 export async function sendLead(
   c: Campaign,
   lead: Lead,
@@ -175,6 +201,11 @@ export async function advance(
         'O perfil retornado está inconsistente. Retome a análise.',
         502,
       );
+    const explicitSize = explicitEmployeeRange(
+      `${c.input.description} ${c.input.market}`,
+    );
+    c.profile.minEmployees = explicitSize.min;
+    c.profile.maxEmployees = explicitSize.max;
     c.stage = 'companies';
     c.cursor = 0;
     c.note = 'Perfil de cliente definido. Preparando a busca de empresas.';
@@ -183,7 +214,7 @@ export async function advance(
     const companyFilters: Json = { mainIndustriesIds: c.profile.industryIds };
     if (c.profile.country)
       companyFilters.locations = [{ country: c.profile.country }];
-    if (c.profile.minEmployees || c.profile.maxEmployees)
+    if (!c.broadSearch && (c.profile.minEmployees || c.profile.maxEmployees))
       companyFilters.sizes = [
         {
           ...(c.profile.minEmployees ? { min: c.profile.minEmployees } : {}),
@@ -199,15 +230,22 @@ export async function advance(
         companies: { include: companyFilters },
         contacts: {
           include: {
-            jobTitles: c.profile.titles,
+            ...(!c.broadSearch ? { jobTitles: c.profile.titles } : {}),
             existingDataPoints: ['work_email'],
           },
         },
       },
-      options: { maxContactsPerCompany: 1 },
+      options: { maxContactsPerCompany: c.broadSearch ? 3 : 1 },
     });
-    const seenCompanies = new Set<string>();
-    const candidates = results(search).flatMap((raw) => {
+    const rawResults = results(search);
+    if (!rawResults.length && !c.broadSearch) {
+      c.broadSearch = true;
+      c.note =
+        'A busca específica não encontrou resultados. Tentando novamente sem porte e cargos rígidos.';
+      return c;
+    }
+    const seenContacts = new Set<string>();
+    const candidates = rawResults.flatMap((raw) => {
       const companyId = String(raw.company?.id || '');
       const contactId = String(raw.id || '');
       const name = [raw.firstName, raw.lastName]
@@ -216,18 +254,15 @@ export async function advance(
         .trim();
       const companyName = String(raw.company?.name || '').trim();
       const domain = safeDomain(raw.company?.domain);
-      const companyKey = domain || companyId;
       if (
         raw.error ||
         !companyId ||
         !contactId ||
-        !name ||
         !companyName ||
-        !companyKey ||
-        seenCompanies.has(companyKey)
+        seenContacts.has(contactId)
       )
         return [];
-      seenCompanies.add(companyKey);
+      seenContacts.add(contactId);
       return [
         {
           contactId,
@@ -273,10 +308,16 @@ export async function advance(
       { input: c.input, profile: c.profile, candidates },
     );
     const selected = new Set<string>();
+    const selectedCompanies = new Set<string>();
     c.leads = ranked.choices
       .filter((choice) => {
         if (choice.score < 60 || selected.has(choice.id)) return false;
+        const candidate = candidates.find((v) => v.contactId === choice.id);
+        if (!candidate) return true;
+        const companyKey = candidate.company.domain || candidate.company.id;
+        if (selectedCompanies.has(companyKey)) return false;
         selected.add(choice.id);
+        selectedCompanies.add(companyKey);
         return true;
       })
       .slice(0, 10)
@@ -321,14 +362,29 @@ export async function advance(
     );
     const usedEmails = new Set<string>();
     for (const lead of pending) {
-      const raw = enriched.find((v) => String(v.id) === lead.contact!.id);
+      const contact = lead.contact!;
+      const raw = enriched.find((v) => String(v.id) === contact.id);
       const sameCompany =
         raw &&
         (String(raw.company?.id) === lead.company.id ||
           (lead.company.domain &&
             safeDomain(raw.company?.domain) === lead.company.domain));
-      const email = sameCompany ? workEmail(raw) : undefined;
-      if (email && !usedEmails.has(email)) {
+      const email = raw && sameCompany ? workEmail(raw) : undefined;
+      if (raw && email && !usedEmails.has(email)) {
+        const name = String(
+          raw.fullName ||
+            [raw.firstName, raw.lastName].filter(Boolean).join(' ') ||
+            contact.name,
+        ).trim();
+        if (!name) {
+          lead.status = 'skipped';
+          lead.issue = 'A Lusha não retornou o nome deste contato.';
+          continue;
+        }
+        contact.name = name;
+        contact.title = String(
+          raw.jobTitle?.title || raw.jobTitle || contact.title,
+        );
         lead.email = email;
         usedEmails.add(email);
       } else {

@@ -87,12 +87,27 @@ export async function POST(request: Request) {
         }),
       });
     }
-    if (!['advance', 'start-send', 'edit'].includes(String(raw.action)))
+    if (
+      !['advance', 'retry-broader', 'start-send', 'edit'].includes(
+        String(raw.action),
+      )
+    )
       throw new AppError('Ação desconhecida.');
     const id = textValue(raw.id, 'Campanha', 36, 36);
     const campaign = await withCampaign(id, async (c) => {
       if (raw.action === 'advance')
         return advance(c, await getCredentials(), deliveryStore);
+      if (raw.action === 'retry-broader') {
+        if (c.stage !== 'done' || c.leads.length || !c.profile)
+          throw new AppError('Esta campanha não pode refazer a busca.', 409);
+        c.profile.minEmployees = 0;
+        c.profile.maxEmployees = 0;
+        c.broadSearch = true;
+        c.stage = 'companies';
+        c.cursor = 0;
+        c.note = 'Preparando uma busca mais ampla na Lusha.';
+        return c;
+      }
       if (raw.action === 'start-send') {
         if (c.stage !== 'review' || !c.leads.some((l) => l.status === 'ready'))
           throw new AppError(

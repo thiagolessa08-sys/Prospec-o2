@@ -1,6 +1,6 @@
 import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { advance, sendLead } from '../lib/pipeline.ts';
+import { advance, explicitEmployeeRange, sendLead } from '../lib/pipeline.ts';
 import { campaignInput, safeDomain } from '../lib/validation.ts';
 import { workEmail } from '../lib/providers.ts';
 import { encrypt, decrypt } from '../lib/crypto.ts';
@@ -76,28 +76,33 @@ function mockProviders(options = {}) {
         'Brazil',
       );
       assert.equal(body.pagination.size, 25);
-      assert.equal(body.options.maxContactsPerCompany, 1);
+      const targeted = Boolean(body.filters.contacts.include.jobTitles);
+      assert.equal(body.options.maxContactsPerCompany, targeted ? 1 : 3);
       assert.equal(body.options.excludeDnc, undefined);
       assert.deepEqual(body.filters.contacts.include.existingDataPoints, [
         'work_email',
       ]);
-      assert.deepEqual(body.filters.contacts.include.jobTitles, [
-        'Operations Director',
-        'Diretor de Operações',
-      ]);
+      if (targeted)
+        assert.deepEqual(body.filters.contacts.include.jobTitles, [
+          'Operations Director',
+          'Diretor de Operações',
+        ]);
       return reply({
-        results: Array.from({ length: options.companyCount ?? 12 }, (_, i) => ({
-          id: `person-${i}`,
-          firstName: 'Pessoa',
-          lastName: String(i),
-          jobTitle: { title: 'Diretora de Operações' },
-          company: {
-            id: `co${i}`,
-            name: `Empresa Teste ${i}`,
-            domain: `empresa${i}.example.com`,
-          },
-          location: { country: 'Brazil' },
-        })),
+        results:
+          options.zeroTargeted && targeted
+            ? []
+            : Array.from({ length: options.companyCount ?? 12 }, (_, i) => ({
+                id: `person-${i}`,
+                firstName: 'Pessoa',
+                lastName: String(i),
+                jobTitle: { title: 'Diretora de Operações' },
+                company: {
+                  id: `co${i}`,
+                  name: `Empresa Teste ${i}`,
+                  domain: `empresa${i}.example.com`,
+                },
+                location: { country: 'Brazil' },
+              })),
       });
     }
     if (url.endsWith('/contacts/enrich'))
@@ -136,7 +141,7 @@ function mockProviders(options = {}) {
             titles: ['Operations Director', 'Diretor de Operações'],
             country: 'Brazil',
             industryIds: [options.invalidIndustry ? 99999 : 22],
-            minEmployees: 0,
+            minEmployees: options.aiMinEmployees ?? 0,
             maxEmployees: 0,
           };
           break;
@@ -259,6 +264,30 @@ test('empty decision-maker search is an honest terminal result', async () => {
   assert.equal(c.stage, 'done');
   assert.deepEqual(c.leads, []);
   assert.match(c.note, /não retornou/);
+});
+test('invented employee size is ignored and an empty targeted search broadens automatically', async () => {
+  const calls = mockProviders({
+    aiMinEmployees: 200,
+    zeroTargeted: true,
+    companyCount: 2,
+  });
+  const c = await untilPaused(makeCampaign(), memoryStore());
+  assert.equal(c.stage, 'review');
+  assert.equal(c.leads.length, 2);
+  assert.equal(c.profile.minEmployees, 0);
+  const searches = calls.filter((x) => x.url.endsWith('/contacts/prospecting'));
+  assert.equal(searches.length, 2);
+  assert.equal(searches[0].body.filters.companies.include.sizes, undefined);
+  assert.ok(searches[0].body.filters.contacts.include.jobTitles);
+  assert.equal(searches[1].body.filters.contacts.include.jobTitles, undefined);
+  assert.equal(searches[1].body.options.maxContactsPerCompany, 3);
+});
+test('explicit employee ranges are preserved deterministically', () => {
+  assert.deepEqual(
+    explicitEmployeeRange('Empresas entre 200 e 1000 funcionários'),
+    { min: 200, max: 1000 },
+  );
+  assert.deepEqual(explicitEmployeeRange('Brasil'), { min: 0, max: 0 });
 });
 test('unknown delivery outcome never triggers a duplicate even after reload or concurrent calls', async () => {
   let calls = 0;

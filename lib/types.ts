@@ -60,6 +60,7 @@ export type Campaign = {
     minEmployees: number;
     maxEmployees: number;
   };
+  broadSearch?: boolean;
   candidates?: Company[];
   leads: Lead[];
 };

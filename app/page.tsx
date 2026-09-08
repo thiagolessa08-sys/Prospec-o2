@@ -496,6 +496,22 @@ export default function Home() {
                     <Button onClick={() => void safe(() => run(active))}>
                       <Play size={16} /> Continuar
                     </Button>
+                  ) : active.stage === 'done' &&
+                    active.leads.length === 0 &&
+                    active.profile ? (
+                    <Button
+                      onClick={() =>
+                        void safe(async () => {
+                          const d = await api({
+                            action: 'retry-broader',
+                            id: active.id,
+                          });
+                          await run(d.campaign);
+                        })
+                      }
+                    >
+                      <Play size={16} /> Tentar busca mais ampla
+                    </Button>
                   ) : (
                     active.stage === 'review' && (
                       <Button

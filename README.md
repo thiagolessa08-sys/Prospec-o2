@@ -20,6 +20,8 @@ O modo econômico faz uma busca agrupada de até 25 contatos, limitada a uma pes
 
 O pedido de prospecção não ativa `excludeDnc`, pois esse filtro de telefones é restrito a determinados planos da Lusha e não é necessário para campanhas que revelam somente e-mails profissionais.
 
+O porte da empresa só é aplicado quando o usuário escreve explicitamente uma quantidade de funcionários ou colaboradores. Se uma busca com cargos específicos não retornar resultados, o sistema tenta uma segunda consulta sem porte e cargos rígidos, mantendo setor, país e disponibilidade de e-mail. Campanhas vazias também oferecem a ação **Tentar busca mais ampla**.
+
 A IA usa apenas a descrição fornecida e os registros retornados pela Lusha; o percentual é uma estimativa de adequação, não probabilidade de compra. Não há pesquisa de notícias na web. A integração Anthropic usa a Messages API e Structured Outputs com `claude-sonnet-4-6`. Respostas incompletas, recusadas ou fora do esquema são rejeitadas antes de prosseguir. Os limites numéricos são validados também no servidor. A chave Anthropic é armazenada separadamente; uma eventual chave antiga de outro provedor não é utilizada nem transferida.
 
 ## Entrega e retomada
