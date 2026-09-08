@@ -13,7 +13,7 @@ function secret() {
     (env as unknown as { APP_ENCRYPTION_KEY?: string }).APP_ENCRYPTION_KEY || ''
   );
 }
-const keys = ['lushaKey', 'openaiKey', 'resendKey'] as const;
+const keys = ['lushaKey', 'anthropicKey', 'resendKey'] as const;
 export async function settingsView(): Promise<SettingsView> {
   const rows = await database()
     .prepare('SELECT key FROM settings')

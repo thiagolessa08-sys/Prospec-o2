@@ -69,7 +69,7 @@ export async function POST(request: Request) {
       const settings = await settingsView();
       if (
         !settings.connected.lushaKey ||
-        !settings.connected.openaiKey ||
+        !settings.connected.anthropicKey ||
         (input.autoSend && !settings.connected.resendKey)
       )
         throw new AppError(

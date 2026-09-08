@@ -130,8 +130,8 @@ export async function advance(
     }
     return c;
   }
-  if (!keys.lushaKey || !keys.openaiKey)
-    throw new AppError('Configure Lusha e OpenAI em Conexões.');
+  if (!keys.lushaKey || !keys.anthropicKey)
+    throw new AppError('Configure Lusha e Anthropic em Conexões.');
   if (c.stage === 'analyze') {
     const catalog = await lusha(
       keys.lushaKey,
@@ -144,7 +144,7 @@ export async function advance(
         502,
       );
     c.profile = await ai<NonNullable<Campaign['profile']>>(
-      keys.openaiKey,
+      keys.anthropicKey,
       'perfil_cliente',
       profileSchema,
       'Analise o produto e o mercado para definir clientes potenciais. Escolha de 1 a 4 mainIndustriesIds do catálogo fornecido, nunca IDs de subindústrias. industryIds deve conter apenas esses IDs numéricos. industries contém seus rótulos. country é o nome em inglês do país definido pelo usuário, vazio se global. titles são até 8 variações PT/EN de cargos compradores relevantes. minEmployees/maxEmployees são limites explícitos do usuário; 0 significa sem limite. summary explica o perfil em até 400 caracteres. Não infira provas de resultado.',
@@ -239,7 +239,7 @@ export async function advance(
       const ranked = await ai<{
         choices: { id: string; score: number; reason: string }[];
       }>(
-        keys.openaiKey,
+        keys.anthropicKey,
         'empresas_compativeis',
         obj({
           choices: arr(
@@ -313,7 +313,7 @@ export async function advance(
         'Nenhum contato com cargo relevante e e-mail profissional disponível nesta busca.';
     } else {
       const choice = await ai<{ ids: string[] }>(
-        keys.openaiKey,
+        keys.anthropicKey,
         'contato_relevante',
         obj({
           ids: arr({
@@ -394,7 +394,7 @@ export async function advance(
     const lead = c.leads[c.cursor];
     if (lead?.email && lead.contact && lead.status === 'pending') {
       const draft = await ai<{ subject: string; body: string }>(
-        keys.openaiKey,
+        keys.anthropicKey,
         'email_personalizado',
         obj({ subject: str, body: str }),
         'Escreva um primeiro e-mail comercial em português, de 80 a 150 palavras, respeitoso e direto. Use o primeiro nome do contato, um fato específico dos dados da empresa e conecte a uma funcionalidade real do software. Apresente a hipótese de benefício como possibilidade. Considere o cargo. Um único convite para conversa. Não invente notícias, clientes, métricas, uso de ferramentas ou dores confirmadas. Texto simples, sem HTML ou markdown, sem placeholders. Não inclua assinatura nem descadastro (o servidor adicionará). Assunto até 100 caracteres, sem quebras de linha.',

@@ -118,11 +118,16 @@ function mockProviders(options = {}) {
           ],
         })),
       });
-    if (url.endsWith('/responses')) {
-      const prompt = JSON.parse(body.input);
-      assert.equal(body.store, false);
+    if (url === 'https://api.anthropic.com/v1/messages') {
+      const prompt = JSON.parse(body.messages[0].content);
+      assert.equal(init.headers['x-api-key'], 'test-anthropic');
+      assert.equal(init.headers['anthropic-version'], '2023-06-01');
+      assert.equal(body.model, 'claude-sonnet-4-6');
+      assert.equal(body.output_config.format.type, 'json_schema');
+      assert.equal(body.store, undefined);
+      assert.equal(body.max_tokens, 8000);
       let value;
-      switch (body.text.format.name) {
+      switch (body.output_config.format.schema.title) {
         case 'perfil_cliente':
           value = {
             summary: 'Varejistas com operação de estoque.',
@@ -136,14 +141,12 @@ function mockProviders(options = {}) {
           break;
         case 'empresas_compativeis':
           value = {
-            choices: prompt.companies
-              .slice(0, 10)
-              .map((c) => ({
-                id: c.id,
-                score: 80,
-                reason:
-                  'A operação de varejo pode se beneficiar da integração dos estoques.',
-              })),
+            choices: prompt.companies.slice(0, 10).map((c) => ({
+              id: c.id,
+              score: 80,
+              reason:
+                'A operação de varejo pode se beneficiar da integração dos estoques.',
+            })),
           };
           break;
         case 'contato_relevante':
@@ -159,13 +162,9 @@ function mockProviders(options = {}) {
           throw new Error('Unexpected AI request');
       }
       return reply({
-        status: 'completed',
-        output: [
-          {
-            type: 'message',
-            content: [{ type: 'output_text', text: JSON.stringify(value) }],
-          },
-        ],
+        type: 'message',
+        stop_reason: 'end_turn',
+        content: [{ type: 'text', text: JSON.stringify(value) }],
       });
     }
     if (url.endsWith('/emails')) return reply({ id: 'mail-' + calls.length });
@@ -175,7 +174,7 @@ function mockProviders(options = {}) {
 }
 const keys = {
   lushaKey: 'test-lusha',
-  openaiKey: 'test-openai',
+  anthropicKey: 'test-anthropic',
   resendKey: 'test-resend',
 };
 async function untilPaused(c, store) {

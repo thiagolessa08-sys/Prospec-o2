@@ -76,10 +76,10 @@ const connections = [
     url: 'https://dashboard.lusha.com',
   },
   {
-    key: 'openaiKey',
-    name: 'OpenAI',
+    key: 'anthropicKey',
+    name: 'Anthropic',
     desc: 'Análise do seu software e personalização.',
-    url: 'https://platform.openai.com/api-keys',
+    url: 'https://platform.claude.com/settings/keys',
   },
   {
     key: 'resendKey',
@@ -355,7 +355,7 @@ export default function Home() {
                       busy ||
                       loading ||
                       !settings?.connected.lushaKey ||
-                      !settings?.connected.openaiKey ||
+                      !settings?.connected.anthropicKey ||
                       (form.autoSend && !settings?.connected.resendKey)
                     }
                   >
@@ -851,7 +851,7 @@ export default function Home() {
         <span>
           órbita <span>·</span> Prospecção com contexto
         </span>
-        <span>Dados Lusha · Inteligência OpenAI</span>
+        <span>Dados Lusha · Inteligência Anthropic</span>
       </footer>
     </div>
   );

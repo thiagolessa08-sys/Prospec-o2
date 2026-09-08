@@ -4,7 +4,7 @@ Aplicação privada em português: descrição do software → perfil ideal → 
 
 ## Configuração
 
-Abra **Conexões** e informe suas chaves da Lusha, OpenAI e Resend. O remetente precisa usar um domínio verificado no Resend. As chaves ficam criptografadas com AES-256-GCM no banco; a chave mestra `APP_ENCRYPTION_KEY` é um segredo do servidor (64 caracteres hexadecimais). Nunca troque ou remova essa chave sem migrar as credenciais existentes.
+Abra **Conexões** e informe suas chaves da Lusha, Anthropic e Resend. O remetente precisa usar um domínio verificado no Resend. As chaves ficam criptografadas com AES-256-GCM no banco; a chave mestra `APP_ENCRYPTION_KEY` é um segredo do servidor (64 caracteres hexadecimais). Nunca troque ou remova essa chave sem migrar as credenciais existentes.
 
 O projeto é publicado com acesso privado do proprietário pelo Sites. Essa barreira protege também as rotas da API. Não torne o site público/compartilhado sem implementar autenticação e segregação por usuário. Escritas exigem JSON e Origin da própria aplicação.
 
@@ -18,7 +18,7 @@ O projeto é publicado com acesso privado do proprietário pelo Sites. Essa barr
 
 Uma busca avalia até 30 empresas da Lusha e seleciona até 10 com adequação suficiente. Enriquecemos essas candidatas para obter descrição e contexto. Por empresa selecionada, a busca retorna até 5 pessoas com os cargos relevantes e e-mail de trabalho; a IA prioriza até 3 para enriquecimento, e apenas uma pessoa com e-mail profissional utilizável é selecionada. Créditos e permissões dependem da conta Lusha. Menos de 10 resultados, falta de e-mail e restrições são informados sem inventar dados.
 
-A IA usa apenas a descrição fornecida e os registros retornados pela Lusha; o percentual é uma estimativa de adequação, não probabilidade de compra. Não há pesquisa de notícias na web. A integração OpenAI usa Responses, Structured Outputs e `store: false`, com `gpt-5.4-mini`.
+A IA usa apenas a descrição fornecida e os registros retornados pela Lusha; o percentual é uma estimativa de adequação, não probabilidade de compra. Não há pesquisa de notícias na web. A integração Anthropic usa a Messages API e Structured Outputs com `claude-sonnet-4-6`. Respostas incompletas, recusadas ou fora do esquema são rejeitadas antes de prosseguir. Os limites numéricos são validados também no servidor. A chave Anthropic é armazenada separadamente; uma eventual chave antiga de outro provedor não é utilizada nem transferida.
 
 ## Entrega e retomada
 
@@ -39,6 +39,7 @@ Validação: `npm run typecheck`, `npm test`, `npm run lint` e `npm run build`. 
 - [Enriquecimento de empresas](https://docs.lusha.com/apis/openapi/enrich/enrichcompanies)
 - [Busca de contatos](https://docs.lusha.com/apis/openapi/prospecting/prospectingcontacts)
 - [Enriquecimento de contatos](https://docs.lusha.com/apis/openapi/enrich/enrichcontacts)
-- [OpenAI Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs)
+- [Anthropic Structured Outputs](https://platform.claude.com/docs/en/build-with-claude/structured-outputs)
+- [Anthropic Messages API](https://platform.claude.com/docs/en/api/messages/create)
 - [Resend: envio de e-mails](https://resend.com/docs/api-reference/emails/send-email)
 - [Resend: idempotência](https://resend.com/docs/dashboard/emails/idempotency-keys)
