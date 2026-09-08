@@ -1,6 +1,6 @@
 import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { ai, obj } from '../lib/providers.ts';
+import { ai, lusha, obj } from '../lib/providers.ts';
 
 const originalFetch = globalThis.fetch;
 afterEach(() => {
@@ -80,5 +80,24 @@ test('Anthropic credential errors identify the correct provider without exposing
       error.message.includes('Anthropic') &&
       error.message.includes('chave inválida') &&
       !error.message.includes('test-anthropic'),
+  );
+});
+
+test('Lusha 403 explains plan-restricted DNC without exposing provider details', async () => {
+  globalThis.fetch = async () =>
+    Response.json(
+      {
+        statusCode: 403,
+        message:
+          'Exclude DNC is not supported on your current plan. Internal trace 123.',
+      },
+      { status: 403 },
+    );
+  await assert.rejects(
+    () => lusha('test-lusha', 'contacts/prospecting', {}),
+    (error) =>
+      error.message.includes('Lusha') &&
+      error.message.includes('filtro DNC') &&
+      !error.message.includes('Internal trace'),
   );
 });

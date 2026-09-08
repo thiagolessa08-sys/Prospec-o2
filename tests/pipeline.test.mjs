@@ -77,7 +77,7 @@ function mockProviders(options = {}) {
       );
       assert.equal(body.pagination.size, 25);
       assert.equal(body.options.maxContactsPerCompany, 1);
-      assert.equal(body.options.excludeDnc, true);
+      assert.equal(body.options.excludeDnc, undefined);
       assert.deepEqual(body.filters.contacts.include.existingDataPoints, [
         'work_email',
       ]);

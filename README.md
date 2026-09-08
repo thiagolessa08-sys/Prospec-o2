@@ -18,6 +18,8 @@ O projeto é publicado com acesso privado do proprietário pelo Sites. Essa barr
 
 O modo econômico faz uma busca agrupada de até 25 contatos, limitada a uma pessoa por empresa, usando setor, porte, região e cargos derivados do perfil. A IA seleciona até 10 pares de empresa e decisor, e o sistema revela os e-mails profissionais escolhidos em uma única operação em lote. Para 10 novos e-mails, o custo esperado pelas regras publicadas pela Lusha é de até 12 créditos: 1 bloco da busca, 1 bloco do enriquecimento e 10 revelações de e-mail. O custo real depende da resposta, do plano e de dados já revelados; o sistema não promete que o provedor aceitará a operação. Menos de 10 resultados, falta de e-mail e restrições são informados sem inventar dados.
 
+O pedido de prospecção não ativa `excludeDnc`, pois esse filtro de telefones é restrito a determinados planos da Lusha e não é necessário para campanhas que revelam somente e-mails profissionais.
+
 A IA usa apenas a descrição fornecida e os registros retornados pela Lusha; o percentual é uma estimativa de adequação, não probabilidade de compra. Não há pesquisa de notícias na web. A integração Anthropic usa a Messages API e Structured Outputs com `claude-sonnet-4-6`. Respostas incompletas, recusadas ou fora do esquema são rejeitadas antes de prosseguir. Os limites numéricos são validados também no servidor. A chave Anthropic é armazenada separadamente; uma eventual chave antiga de outro provedor não é utilizada nem transferida.
 
 ## Entrega e retomada

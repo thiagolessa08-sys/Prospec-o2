@@ -11,19 +11,32 @@ export type Credentials = {
 export type Json = Record<string, any>;
 export class ProviderError extends AppError {
   providerStatus: number;
-  constructor(provider: string, status: number) {
+  constructor(provider: string, status: number, detail = '') {
     const meanings: Record<number, string> = {
       400: 'a consulta não foi aceita; revise os dados e a configuração',
       401: 'chave inválida ou expirada; atualize em Conexões',
       402: 'créditos insuficientes para esta etapa; confira o saldo e os limites da chave',
-      403: 'sua conta não tem acesso a este recurso; verifique o plano ou o domínio do remetente',
+      403: 'sua conta não tem acesso a este recurso',
       404: 'recurso não encontrado',
       422: 'verifique os dados e o domínio do remetente',
       429: 'limite temporário atingido; retome a campanha em alguns minutos',
       451: 'dados indisponíveis por restrição do provedor',
     };
+    const normalized = detail.toLowerCase();
+    let meaning = meanings[status];
+    if (provider === 'Lusha' && status === 403) {
+      if (/exclude\s*dnc|dnc.*not supported|scale/.test(normalized))
+        meaning = 'o filtro DNC não está disponível no seu plano';
+      else if (/v3.*not enabled|v3.*não.*habilitad/.test(normalized))
+        meaning = 'o acesso à API V3 não está habilitado na sua conta';
+      else if (/account.*not active|conta.*inativ/.test(normalized))
+        meaning = 'a conta está inativa; contate support@lusha.com';
+      else meaning = 'a conta ou o plano não tem acesso a esta operação';
+    } else if (provider === 'Resend' && status === 403) {
+      meaning = 'o remetente ou domínio não foi autorizado no Resend';
+    }
     super(
-      `${provider}: ${meanings[status] || 'não foi possível concluir a solicitação; tente mais tarde'} (HTTP ${status}).`,
+      `${provider}: ${meaning || 'não foi possível concluir a solicitação; tente mais tarde'} (HTTP ${status}).`,
       502,
     );
     this.providerStatus = status;
@@ -44,7 +57,16 @@ export async function fetchJson(
       502,
     );
   }
-  if (!res.ok) throw new ProviderError(provider, res.status);
+  if (!res.ok) {
+    let detail = '';
+    try {
+      const error = (await res.json()) as Json;
+      detail = String(error.message || error.error?.message || '');
+    } catch {
+      // Error bodies are optional and never required to classify the status.
+    }
+    throw new ProviderError(provider, res.status, detail);
+  }
   try {
     return (await res.json()) as Json;
   } catch {

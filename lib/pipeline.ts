@@ -204,7 +204,7 @@ export async function advance(
           },
         },
       },
-      options: { maxContactsPerCompany: 1, excludeDnc: true },
+      options: { maxContactsPerCompany: 1 },
     });
     const seenCompanies = new Set<string>();
     const candidates = results(search).flatMap((raw) => {
