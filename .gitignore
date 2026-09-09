@@ -36,5 +36,7 @@ yarn-error.log*
 next-env.d.ts
 /dist/
 /.wrangler/
+/.railway-test-state*/
+/.tmp-railway-test/
 /outputs/
 /work/

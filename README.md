@@ -36,6 +36,14 @@ Requer Node 22.13+ e npm. Instale com `npm install`, configure `.dev.vars` com `
 
 Validação: `npm run typecheck`, `npm test`, `npm run lint` e `npm run build`. Os testes usam respostas simuladas conforme os contratos publicados; nenhuma campanha de teste envia e-mail real. A operação real exige credenciais válidas e deve ser verificada com as contas do usuário.
 
+## Railway
+
+O arquivo `railway.json` executa o build, inicia o servidor em `0.0.0.0` na porta fornecida pelo Railway e valida `/api/health` antes de liberar o deploy. No primeiro start, o inicializador cria as tabelas e uma chave de criptografia própria; nenhum segredo é gravado no Git.
+
+Antes de cadastrar credenciais reais, anexe um volume ao serviço com ponto de montagem `/data`. O inicializador detecta `RAILWAY_VOLUME_MOUNT_PATH` e mantém nesse volume o banco e a chave de criptografia. Sem volume, campanhas e conexões são apagadas quando o container é substituído.
+
+O acesso privado do Sites não acompanha uma cópia publicada no Railway. Restrinja o domínio do Railway antes de cadastrar credenciais de produção.
+
 ## Referências dos provedores
 
 - [Lusha V3: introdução e autenticação](https://docs.lusha.com/guides)
