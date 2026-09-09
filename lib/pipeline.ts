@@ -186,12 +186,6 @@ export async function advance(
       c.profile.industries,
       catalog.values,
     );
-    console.info('[industry-resolution]', {
-      allowed: [...allowed].slice(0, 40),
-      returnedIds: c.profile.industryIds,
-      returnedLabels: c.profile.industries,
-      resolved: resolvedIndustryIds,
-    });
     if (
       !resolvedIndustryIds.length ||
       resolvedIndustryIds.length > 4 ||
