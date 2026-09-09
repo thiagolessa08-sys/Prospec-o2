@@ -8,6 +8,14 @@ import type { DeliveryStore, Receipt } from './pipeline';
 function database(): D1Database {
   return (env as unknown as { DB: D1Database }).DB;
 }
+let startupLeaseReset: Promise<void> | undefined;
+function resetOrphanedLeases() {
+  startupLeaseReset ??= database()
+    .prepare('UPDATE campaigns SET lease=NULL, lease_until=0')
+    .run()
+    .then(() => undefined);
+  return startupLeaseReset;
+}
 function secret() {
   return (
     (env as unknown as { APP_ENCRYPTION_KEY?: string }).APP_ENCRYPTION_KEY || ''
@@ -101,6 +109,9 @@ export async function withCampaign(
   id: string,
   fn: (c: Campaign) => Promise<Campaign>,
 ) {
+  // A worker restart terminates in-flight requests. Clear those leases once
+  // before the first resumed campaign in this process.
+  await resetOrphanedLeases();
   const lease = crypto.randomUUID();
   const claimed = await database()
     .prepare(
