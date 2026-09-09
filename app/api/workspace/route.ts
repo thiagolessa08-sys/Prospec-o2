@@ -1,4 +1,5 @@
 import { advance } from '@/lib/pipeline';
+import { isSameOriginRequest } from '@/lib/request-security';
 import { AppError, campaignInput, textValue } from '@/lib/validation';
 import {
   settingsView,
@@ -41,11 +42,9 @@ export async function GET() {
 }
 export async function POST(request: Request) {
   try {
-    // Sites supplies owner-only access at the perimeter. Writes also require same-origin JSON.
-    if (
-      request.headers.get('origin') !== new URL(request.url).origin ||
-      request.headers.get('sec-fetch-site') === 'cross-site'
-    )
+    // Sites supplies owner-only access at the perimeter. Railway requests arrive through a proxy.
+    // In both runtimes, writes require same-origin JSON.
+    if (!isSameOriginRequest(request))
       throw new AppError('Origem da solicitação não permitida.', 403);
     if (!request.headers.get('content-type')?.startsWith('application/json'))
       throw new AppError('Formato de solicitação inválido.', 415);

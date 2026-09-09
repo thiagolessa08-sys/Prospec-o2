@@ -820,9 +820,12 @@ export default function Home() {
                     id={f.key}
                     type="password"
                     autoComplete="new-password"
+                    disabled={settings?.managed[f.key]}
                     value={credentials[f.key] || ''}
                     placeholder={
-                      settings?.connected[f.key]
+                      settings?.managed[f.key]
+                        ? 'Configurada no Railway'
+                        : settings?.connected[f.key]
                         ? 'Configurada · preencha para substituir'
                         : 'Cole sua chave aqui'
                     }
@@ -839,8 +842,10 @@ export default function Home() {
                     }
                   >
                     <i />
-                    {settings?.connected[f.key]
-                      ? 'Chave salva'
+                    {settings?.managed[f.key]
+                      ? 'Variável do Railway'
+                      : settings?.connected[f.key]
+                        ? 'Chave salva'
                       : 'Configuração pendente'}
                   </span>
                 </section>

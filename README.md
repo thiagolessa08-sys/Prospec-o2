@@ -42,6 +42,8 @@ O arquivo `railway.json` executa o build, inicia o servidor em `0.0.0.0` na port
 
 Antes de cadastrar credenciais reais, anexe um volume ao serviço com ponto de montagem `/data`. O inicializador detecta `RAILWAY_VOLUME_MOUNT_PATH` e mantém nesse volume o banco e a chave de criptografia. Sem volume, campanhas e conexões são apagadas quando o container é substituído.
 
+No Railway, configure preferencialmente `LUSHA_API_KEY`, `ANTHROPIC_API_KEY` e `RESEND_API_KEY` na aba Variables. Essas variáveis têm prioridade sobre credenciais salvas pela tela e aparecem na interface como administradas pelo Railway. A validação de origem aceita o host público encaminhado pelo proxy, mantendo o bloqueio de requisições de outros sites.
+
 O acesso privado do Sites não acompanha uma cópia publicada no Railway. Restrinja o domínio do Railway antes de cadastrar credenciais de produção.
 
 ## Referências dos provedores

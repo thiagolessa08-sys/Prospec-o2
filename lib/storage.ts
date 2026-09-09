@@ -14,14 +14,37 @@ function secret() {
   );
 }
 const keys = ['lushaKey', 'anthropicKey', 'resendKey'] as const;
+const environmentNames = {
+  lushaKey: 'LUSHA_API_KEY',
+  anthropicKey: 'ANTHROPIC_API_KEY',
+  resendKey: 'RESEND_API_KEY',
+} as const;
+
+function environmentCredentials(): Credentials {
+  const runtime = env as unknown as Record<string, unknown>;
+  return Object.fromEntries(
+    keys.flatMap((key) => {
+      const value = runtime[environmentNames[key]];
+      return typeof value === 'string' && value.trim()
+        ? [[key, value.trim()]]
+        : [];
+    }),
+  );
+}
+
 export async function settingsView(): Promise<SettingsView> {
   const rows = await database()
     .prepare('SELECT key FROM settings')
     .all<{ key: string }>();
+  const managed = environmentCredentials();
   return {
     connected: Object.fromEntries(
-      keys.map((k) => [k, rows.results.some((r) => r.key === k)]),
+      keys.map((k) => [
+        k,
+        Boolean(managed[k]) || rows.results.some((r) => r.key === k),
+      ]),
     ),
+    managed: Object.fromEntries(keys.map((k) => [k, Boolean(managed[k])])),
   };
 }
 export async function getCredentials(): Promise<Credentials> {
@@ -36,7 +59,7 @@ export async function getCredentials(): Promise<Credentials> {
         secret(),
         row.key,
       );
-  return result;
+  return { ...result, ...environmentCredentials() };
 }
 export async function saveCredentials(raw: Record<string, unknown>) {
   const statements: D1PreparedStatement[] = [];

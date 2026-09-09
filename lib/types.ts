@@ -64,4 +64,7 @@ export type Campaign = {
   candidates?: Company[];
   leads: Lead[];
 };
-export type SettingsView = { connected: Record<string, boolean> };
+export type SettingsView = {
+  connected: Record<string, boolean>;
+  managed: Record<string, boolean>;
+};

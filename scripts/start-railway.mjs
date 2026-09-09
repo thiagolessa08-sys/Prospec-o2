@@ -69,6 +69,12 @@ const argumentsForServer = [
 
 argumentsForServer.push('--var', `APP_ENCRYPTION_KEY:${encryptionKey}`);
 
+for (const name of ['LUSHA_API_KEY', 'ANTHROPIC_API_KEY', 'RESEND_API_KEY']) {
+  if (process.env[name]) {
+    argumentsForServer.push('--var', `${name}:${process.env[name]}`);
+  }
+}
+
 const server = spawn(process.execPath, argumentsForServer, {
   stdio: 'inherit',
   env: process.env,
