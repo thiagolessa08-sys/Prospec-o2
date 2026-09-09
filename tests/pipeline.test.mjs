@@ -2,7 +2,7 @@ import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { advance, explicitEmployeeRange, sendLead } from '../lib/pipeline.ts';
 import { campaignInput, safeDomain } from '../lib/validation.ts';
-import { workEmail } from '../lib/providers.ts';
+import { workEmail, resolveMainIndustryIds } from '../lib/providers.ts';
 import { encrypt, decrypt } from '../lib/crypto.ts';
 
 const originalFetch = globalThis.fetch;
@@ -137,7 +137,7 @@ function mockProviders(options = {}) {
         case 'perfil_cliente':
           value = {
             summary: 'Varejistas com operação de estoque.',
-            industries: ['Retail'],
+            industries: options.invalidIndustry ? ['Unknown'] : ['Retail'],
             titles: ['Operations Director', 'Diretor de Operações'],
             country: 'Brazil',
             industryIds: [options.invalidIndustry ? 99999 : 22],
@@ -256,6 +256,16 @@ test('unknown industry identifiers stop before any paid contact search', async (
   assert.equal(
     calls.some((x) => x.url.endsWith('/contacts/prospecting')),
     false,
+  );
+});
+test('industry labels recover a stale model ID against the live catalog', () => {
+  assert.deepEqual(
+    resolveMainIndustryIds(
+      [99999],
+      ['Retail'],
+      [{ id: 22, name: 'Retail', subIndustries: [{ id: 23, name: 'Groceries' }] }],
+    ),
+    [22],
   );
 });
 test('empty decision-maker search is an honest terminal result', async () => {

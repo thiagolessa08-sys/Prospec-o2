@@ -262,3 +262,101 @@ export function industryIds(value: unknown): Set<number> {
   walk(value);
   return found;
 }
+
+function industryLabel(value: unknown): string {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return '';
+  const record = value as Json;
+  for (const key of ['label', 'name', 'title', 'industry', 'value']) {
+    if (typeof record[key] === 'string' && record[key].trim())
+      return record[key].trim();
+  }
+  return '';
+}
+
+function industryNumber(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isInteger(value)) return value;
+  if (typeof value === 'string' && /^\d+$/.test(value.trim()))
+    return Number(value);
+  return undefined;
+}
+
+function normalizeIndustryLabel(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+/**
+ * Resolve the model's industry selection against the live catalog. Lusha's
+ * taxonomy can be renamed or reshaped, so labels are used as a safe fallback
+ * when a model returns an old numeric ID. Nested sub-industries resolve to
+ * their parent main-industry ID.
+ */
+export function resolveMainIndustryIds(
+  ids: unknown,
+  labels: unknown,
+  catalog: unknown,
+): number[] {
+  const records: { id: number; mainId: number; label: string }[] = [];
+  function walk(value: unknown, parentMainId?: number) {
+    if (Array.isArray(value)) {
+      value.forEach((item) => walk(item, parentMainId));
+      return;
+    }
+    if (!value || typeof value !== 'object') return;
+    const record = value as Json;
+    const ownId =
+      industryNumber(record.id) ??
+      industryNumber(record.mainIndustryId) ??
+      industryNumber(record.industryId);
+    const mainId = parentMainId ?? ownId;
+    const label = industryLabel(record);
+    if (ownId !== undefined && mainId !== undefined && label)
+      records.push({ id: ownId, mainId, label });
+    for (const [key, child] of Object.entries(record)) {
+      if (['id', 'mainIndustryId', 'industryId'].includes(key)) continue;
+      if (key === 'subIndustries' || key === 'subindustries')
+        walk(child, ownId ?? parentMainId);
+      else if (typeof child === 'object') walk(child, parentMainId);
+    }
+  }
+  walk(catalog);
+
+  const mainIds = new Set(
+    records.filter((entry) => entry.id === entry.mainId).map((entry) => entry.id),
+  );
+  const requested = Array.isArray(ids)
+    ? ids.map(industryNumber).filter((id): id is number => id !== undefined)
+    : [];
+  const requestedLabels = Array.isArray(labels)
+    ? labels.filter((label): label is string => typeof label === 'string')
+    : [];
+  const resolved = requested.filter((id) => mainIds.has(id));
+  const canonicalRecords = records.map((entry) => ({
+    ...entry,
+    normalized: normalizeIndustryLabel(entry.label),
+  }));
+  for (const label of requestedLabels) {
+    const normalized = normalizeIndustryLabel(label);
+    if (!normalized) continue;
+    const exact = canonicalRecords.filter((entry) => entry.normalized === normalized);
+    const candidates = exact.length
+      ? exact
+      : canonicalRecords.filter(
+          (entry) =>
+            entry.normalized.length >= 4 &&
+            (entry.normalized.includes(normalized) || normalized.includes(entry.normalized)),
+        );
+    const mainId = candidates.length === 1 ? candidates[0].mainId : undefined;
+    if (mainId !== undefined && !resolved.includes(mainId)) resolved.push(mainId);
+  }
+  // Keep the old strict behavior when neither the IDs nor labels map to the
+  // current catalog. The caller will stop before a paid Lusha search.
+  if (!resolved.length || resolved.length > 4) return [];
+  if (requested.length && resolved.length < requested.length && !requested.every((id) => mainIds.has(id)))
+    return [];
+  return resolved;
+}

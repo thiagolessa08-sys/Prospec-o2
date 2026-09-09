@@ -8,6 +8,7 @@ import {
   results,
   workEmail,
   industryIds,
+  resolveMainIndustryIds,
   ProviderError,
   type Credentials,
   type Json,
@@ -180,15 +181,21 @@ export async function advance(
         industryCatalog: catalog.values,
       },
     );
+    const resolvedIndustryIds = resolveMainIndustryIds(
+      c.profile.industryIds,
+      c.profile.industries,
+      catalog.values,
+    );
     if (
-      !c.profile.industryIds.length ||
-      c.profile.industryIds.length > 4 ||
-      c.profile.industryIds.some((id) => !allowed.has(id))
+      !resolvedIndustryIds.length ||
+      resolvedIndustryIds.length > 4 ||
+      resolvedIndustryIds.some((id) => !allowed.has(id))
     )
       throw new AppError(
         'A IA selecionou um setor inválido. Retome a análise.',
         502,
       );
+    c.profile.industryIds = resolvedIndustryIds;
     if (
       !c.profile.titles.length ||
       c.profile.titles.length > 8 ||
