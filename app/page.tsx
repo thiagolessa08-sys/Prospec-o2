@@ -27,6 +27,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { Progress } from '@/components/ui/progress';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import type { Campaign, SettingsView } from '@/lib/types';
 
 async function api(body?: unknown) {
@@ -103,7 +110,6 @@ export default function Home() {
   const [selected, setSelected] = useState<string | null>(null);
   const [edit, setEdit] = useState({ subject: '', body: '' });
   const stop = useRef(false);
-  const emailPanel = useRef<HTMLElement | null>(null);
   const refresh = async () => {
     const data = await api();
     setSettings(data.settings);
@@ -129,13 +135,6 @@ export default function Home() {
       mounted = false;
     };
   }, []);
-  useEffect(() => {
-    if (!selected) return;
-    const frame = requestAnimationFrame(() => {
-      emailPanel.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [selected]);
   const field = (key: keyof typeof blank, value: string | boolean) =>
     setForm((f) => ({ ...f, [key]: value }));
   const safe = async (fn: () => Promise<void>) => {
@@ -667,23 +666,20 @@ export default function Home() {
                 ))}
               </div>
               {lead && (
-                <section ref={emailPanel} className="panel email-editor">
-                  <div className="progress-top">
-                    <div>
+                <Dialog
+                  open={Boolean(lead)}
+                  onOpenChange={(open) => {
+                    if (!open) setSelected(null);
+                  }}
+                >
+                  <DialogContent className="email-editor max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-2xl">
+                    <DialogHeader>
                       <p className="eyebrow">MENSAGEM PERSONALIZADA</p>
-                      <h2>Para {lead.contact?.name}</h2>
-                      <p>
+                      <DialogTitle>Para {lead.contact?.name}</DialogTitle>
+                      <DialogDescription>
                         {lead.email} · {lead.company.name}
-                      </p>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      aria-label="Fechar e-mail"
-                      onClick={() => setSelected(null)}
-                    >
-                      <X />
-                    </Button>
-                  </div>
+                      </DialogDescription>
+                    </DialogHeader>
                   <label htmlFor="subject">Assunto</label>
                   <Input
                     id="subject"
@@ -724,7 +720,8 @@ export default function Home() {
                       Salvar alterações
                     </Button>
                   )}
-                </section>
+                  </DialogContent>
+                </Dialog>
               )}
             </>
           )}
