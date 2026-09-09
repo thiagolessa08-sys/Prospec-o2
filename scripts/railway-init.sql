@@ -19,3 +19,6 @@ CREATE TABLE IF NOT EXISTS `settings` (
   `key` text PRIMARY KEY NOT NULL,
   `encrypted` text NOT NULL
 );
+
+-- A process restart ends any in-flight request, so its lease cannot remain active.
+UPDATE `campaigns` SET `lease` = NULL, `lease_until` = 0;
