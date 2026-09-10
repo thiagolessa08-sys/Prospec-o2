@@ -32,6 +32,28 @@ const profileSchema = obj({
   maxEmployees: integer,
 });
 
+function escapeHtml(value: string) {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+export function textEmailHtml(text: string) {
+  const linked = text
+    .split(/(https?:\/\/[^\s<>"']+)/g)
+    .map((part) =>
+      /^https?:\/\//.test(part)
+        ? `<a href="${escapeHtml(part)}">${escapeHtml(part)}</a>`
+        : escapeHtml(part),
+    )
+    .join('')
+    .replaceAll('\n', '<br>');
+  return `<div style="font-family:Arial,sans-serif;font-size:16px;line-height:1.6;color:#10243e">${linked}</div>`;
+}
+
 export function explicitEmployeeRange(text: string) {
   const normalized = text.toLowerCase().replace(/\./g, '');
   const employee = '(?:funcionários|funcionarios|colaboradores|employees)';
@@ -103,6 +125,7 @@ export async function sendLead(
         reply_to: c.input.senderEmail,
         subject: lead.subject,
         text: lead.body,
+        html: textEmailHtml(lead.body),
         tags: [{ name: 'campaign', value: c.id }],
       }),
     });
@@ -122,6 +145,13 @@ export async function sendLead(
     await store.finish(receiptId, 'sent', result.id);
     lead.providerId = result.id;
     lead.status = 'sent';
+    const acceptedAt = new Date().toISOString();
+    lead.delivery = {
+      ...lead.delivery,
+      acceptedAt,
+      lastEvent: 'email.sent',
+      lastEventAt: acceptedAt,
+    };
   } catch {
     lead.status = 'uncertain';
     lead.issue =

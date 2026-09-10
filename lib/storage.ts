@@ -2,6 +2,7 @@ import { env } from 'cloudflare:workers';
 import { encrypt, decrypt } from './crypto';
 import { AppError } from './validation';
 import type { Campaign, SettingsView } from './types';
+import { applyDeliveryEvent } from './delivery-tracking';
 import type { Credentials } from './providers';
 import type { DeliveryStore, Receipt } from './pipeline';
 
@@ -93,10 +94,71 @@ export async function saveCredentials(raw: Record<string, unknown>) {
   return settingsView();
 }
 export async function listCampaigns() {
-  const rows = await database()
-    .prepare('SELECT payload FROM campaigns ORDER BY created_at DESC LIMIT 100')
-    .all<{ payload: string }>();
-  return rows.results.map((r) => JSON.parse(r.payload) as Campaign);
+  const [rows, events] = await Promise.all([
+    database()
+      .prepare(
+        'SELECT payload FROM campaigns ORDER BY created_at DESC LIMIT 100',
+      )
+      .all<{ payload: string }>(),
+    database()
+      .prepare(
+        'SELECT campaign_id AS campaignId, provider_id AS providerId, type, created_at AS createdAt FROM delivery_events ORDER BY created_at ASC',
+      )
+      .all<{
+        campaignId: string;
+        providerId: string;
+        type: string;
+        createdAt: string;
+      }>(),
+  ]);
+  const campaigns = rows.results.map(
+    (row) => JSON.parse(row.payload) as Campaign,
+  );
+  const byCampaign = new Map(
+    campaigns.map((campaign) => [campaign.id, campaign]),
+  );
+  for (const event of events.results) {
+    const campaign = byCampaign.get(event.campaignId);
+    const lead = campaign?.leads.find(
+      (candidate) => candidate.providerId === event.providerId,
+    );
+    if (lead)
+      lead.delivery = applyDeliveryEvent(
+        lead.delivery,
+        event.type,
+        event.createdAt,
+      );
+  }
+  return campaigns;
+}
+
+export async function recordResendEvent(input: {
+  id: string;
+  campaignId?: string;
+  providerId: string;
+  type: string;
+  createdAt: string;
+}) {
+  const receipt = await database()
+    .prepare(
+      'SELECT campaign_id AS campaignId FROM deliveries WHERE provider_id=? LIMIT 1',
+    )
+    .bind(input.providerId)
+    .first<{ campaignId: string }>();
+  const campaignId = input.campaignId || receipt?.campaignId;
+  if (!campaignId) return { matched: false, stored: false };
+  const campaign = await database()
+    .prepare('SELECT id FROM campaigns WHERE id=? LIMIT 1')
+    .bind(campaignId)
+    .first<{ id: string }>();
+  if (!campaign) return { matched: false, stored: false };
+  const result = await database()
+    .prepare(
+      'INSERT OR IGNORE INTO delivery_events (id, campaign_id, provider_id, type, created_at) VALUES (?, ?, ?, ?, ?)',
+    )
+    .bind(input.id, campaignId, input.providerId, input.type, input.createdAt)
+    .run();
+  return { matched: true, stored: result.meta.changes === 1 };
 }
 export async function createCampaign(c: Campaign) {
   await database()

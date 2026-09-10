@@ -5,16 +5,22 @@ import Link from 'next/link';
 import {
   ArrowRight,
   ArrowUpRight,
+  Activity,
   Building2,
   Check,
+  CheckCheck,
+  CircleX,
   CircleDot,
   Cpu,
   History,
+  Eye,
   Loader2,
   Mail,
+  MousePointerClick,
   Orbit,
   Play,
   Plus,
+  RefreshCw,
   Settings2,
   Sparkles,
   Target,
@@ -35,6 +41,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import type { Campaign, SettingsView } from '@/lib/types';
+import { deliveryFlags } from '@/lib/delivery-tracking';
 
 async function api(body?: unknown) {
   const res = await fetch(
@@ -52,6 +59,7 @@ async function api(body?: unknown) {
     settings: SettingsView;
     campaigns: Campaign[];
     campaign: Campaign;
+    sync?: { matched: number; stored: number };
   };
   if (!res.ok)
     throw new Error(
@@ -96,6 +104,19 @@ const connections = [
   },
 ];
 
+function eventTime(value?: string) {
+  if (!value) return 'Aguardando';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? 'Registrado'
+    : date.toLocaleString('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+}
+
 export default function Home() {
   const [tab, setTab] = useState('campaign');
   const [form, setForm] = useState(blank);
@@ -108,6 +129,9 @@ export default function Home() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
+  const [trackingCampaignId, setTrackingCampaignId] = useState('');
+  const [trackingLoading, setTrackingLoading] = useState(false);
+  const [trackingRefresh, setTrackingRefresh] = useState(0);
   const [edit, setEdit] = useState({ subject: '', body: '' });
   const stop = useRef(false);
   const refresh = async () => {
@@ -135,6 +159,34 @@ export default function Home() {
       mounted = false;
     };
   }, []);
+  useEffect(() => {
+    if (tab !== 'tracking' || !settings?.connected.resendKey) return;
+    let mounted = true;
+    const sync = async () => {
+      setTrackingLoading(true);
+      try {
+        const data = await api({ action: 'sync-delivery' });
+        if (!mounted) return;
+        setCampaigns(data.campaigns);
+        setActive((current) =>
+          current
+            ? data.campaigns.find((campaign) => campaign.id === current.id) ||
+              current
+            : current,
+        );
+      } catch (e) {
+        if (mounted) setError((e as Error).message);
+      } finally {
+        if (mounted) setTrackingLoading(false);
+      }
+    };
+    void sync();
+    const interval = window.setInterval(() => void sync(), 30000);
+    return () => {
+      mounted = false;
+      window.clearInterval(interval);
+    };
+  }, [tab, settings?.connected.resendKey, trackingRefresh]);
   const field = (key: keyof typeof blank, value: string | boolean) =>
     setForm((f) => ({ ...f, [key]: value }));
   const safe = async (fn: () => Promise<void>) => {
@@ -162,6 +214,25 @@ export default function Home() {
     (f) => settings?.connected[f.key],
   ).length;
   const lead = active?.leads.find((l) => l.id === selected);
+  const trackingCampaign =
+    campaigns.find((campaign) => campaign.id === trackingCampaignId) ||
+    campaigns.find((campaign) =>
+      campaign.leads.some((item) => item.providerId),
+    ) ||
+    campaigns[0];
+  const trackedLeads =
+    trackingCampaign?.leads.filter((item) => item.providerId) || [];
+  const trackingTotals = trackedLeads.reduce(
+    (totals, item) => {
+      const flags = deliveryFlags(item.delivery);
+      totals.delivered += Number(flags.delivered);
+      totals.opened += Number(flags.opened);
+      totals.clicked += Number(flags.clicked);
+      totals.bounced += Number(flags.bounced);
+      return totals;
+    },
+    { delivered: 0, opened: 0, clicked: 0, bounced: 0 },
+  );
   const stageIndex = active
     ? Math.max(
         0,
@@ -201,6 +272,9 @@ export default function Home() {
             </TabsTrigger>
             <TabsTrigger value="history">
               <History /> Histórico
+            </TabsTrigger>
+            <TabsTrigger value="tracking">
+              <Activity /> Acompanhamento
             </TabsTrigger>
             <TabsTrigger value="settings">
               <Settings2 /> Conexões{' '}
@@ -680,46 +754,46 @@ export default function Home() {
                         {lead.email} · {lead.company.name}
                       </DialogDescription>
                     </DialogHeader>
-                  <label htmlFor="subject">Assunto</label>
-                  <Input
-                    id="subject"
-                    value={edit.subject}
-                    maxLength={200}
-                    readOnly={lead.status !== 'ready'}
-                    onChange={(e) =>
-                      setEdit((v) => ({ ...v, subject: e.target.value }))
-                    }
-                  />
-                  <label htmlFor="body">E-mail</label>
-                  <Textarea
-                    id="body"
-                    className="email-body"
-                    value={edit.body}
-                    maxLength={6000}
-                    readOnly={lead.status !== 'ready'}
-                    onChange={(e) =>
-                      setEdit((v) => ({ ...v, body: e.target.value }))
-                    }
-                  />
-                  {lead.status === 'ready' && (
-                    <Button
-                      disabled={busy}
-                      onClick={() =>
-                        void safe(async () => {
-                          const d = await api({
-                            action: 'edit',
-                            id: active.id,
-                            leadId: lead.id,
-                            ...edit,
-                          });
-                          setActive(d.campaign);
-                          setNotice('E-mail atualizado.');
-                        })
+                    <label htmlFor="subject">Assunto</label>
+                    <Input
+                      id="subject"
+                      value={edit.subject}
+                      maxLength={200}
+                      readOnly={lead.status !== 'ready'}
+                      onChange={(e) =>
+                        setEdit((v) => ({ ...v, subject: e.target.value }))
                       }
-                    >
-                      Salvar alterações
-                    </Button>
-                  )}
+                    />
+                    <label htmlFor="body">E-mail</label>
+                    <Textarea
+                      id="body"
+                      className="email-body"
+                      value={edit.body}
+                      maxLength={6000}
+                      readOnly={lead.status !== 'ready'}
+                      onChange={(e) =>
+                        setEdit((v) => ({ ...v, body: e.target.value }))
+                      }
+                    />
+                    {lead.status === 'ready' && (
+                      <Button
+                        disabled={busy}
+                        onClick={() =>
+                          void safe(async () => {
+                            const d = await api({
+                              action: 'edit',
+                              id: active.id,
+                              leadId: lead.id,
+                              ...edit,
+                            });
+                            setActive(d.campaign);
+                            setNotice('E-mail atualizado.');
+                          })
+                        }
+                      >
+                        Salvar alterações
+                      </Button>
+                    )}
                   </DialogContent>
                 </Dialog>
               )}
@@ -789,6 +863,186 @@ export default function Home() {
             )}
           </div>
         </TabsContent>
+        <TabsContent value="tracking">
+          <div className="page-heading tracking-heading">
+            <div>
+              <p className="eyebrow">DO ENVIO À RESPOSTA</p>
+              <h1>Acompanhamento dos e-mails</h1>
+              <p>
+                Veja a entrega e as interações registradas pelo Resend para cada
+                contato.
+              </p>
+            </div>
+            <div className="tracking-actions">
+              <label htmlFor="tracking-campaign">Campanha</label>
+              <select
+                id="tracking-campaign"
+                value={trackingCampaign?.id || ''}
+                onChange={(event) => setTrackingCampaignId(event.target.value)}
+              >
+                {campaigns.map((campaign) => (
+                  <option key={campaign.id} value={campaign.id}>
+                    {campaign.input.name} ·{' '}
+                    {new Date(campaign.createdAt).toLocaleDateString('pt-BR')}
+                  </option>
+                ))}
+              </select>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={trackingLoading || !settings?.connected.resendKey}
+                onClick={() => setTrackingRefresh((value) => value + 1)}
+              >
+                <RefreshCw
+                  size={15}
+                  className={trackingLoading ? 'spin' : undefined}
+                />
+                Atualizar
+              </Button>
+            </div>
+          </div>
+          {trackingCampaign && trackedLeads.length ? (
+            <>
+              <section className="tracking-summary" aria-label="Resumo">
+                <article className="panel tracking-metric">
+                  <Mail size={18} />
+                  <span>Enviados</span>
+                  <strong>{trackedLeads.length}</strong>
+                </article>
+                <article className="panel tracking-metric delivered">
+                  <CheckCheck size={18} />
+                  <span>Entregues</span>
+                  <strong>{trackingTotals.delivered}</strong>
+                </article>
+                <article className="panel tracking-metric opened">
+                  <Eye size={18} />
+                  <span>Abertos</span>
+                  <strong>{trackingTotals.opened}</strong>
+                </article>
+                <article className="panel tracking-metric clicked">
+                  <MousePointerClick size={18} />
+                  <span>Cliques</span>
+                  <strong>{trackingTotals.clicked}</strong>
+                </article>
+                <article className="panel tracking-metric bounced">
+                  <CircleX size={18} />
+                  <span>Devolvidos</span>
+                  <strong>{trackingTotals.bounced}</strong>
+                </article>
+              </section>
+              <div className="tracking-list">
+                {trackedLeads.map((item) => {
+                  const flags = deliveryFlags(item.delivery);
+                  const current = flags.bounced
+                    ? 'Devolvido'
+                    : flags.clicked
+                      ? 'Clicou'
+                      : flags.opened
+                        ? 'Aberto'
+                        : flags.delivered
+                          ? 'Entregue'
+                          : 'Enviado';
+                  return (
+                    <article className="panel tracking-row" key={item.id}>
+                      <div className="tracking-person">
+                        <span className="company-initial">
+                          {item.company.name.slice(0, 2).toUpperCase()}
+                        </span>
+                        <div>
+                          <span className="tracking-current">{current}</span>
+                          <h3>{item.company.name}</h3>
+                          <p>
+                            {item.contact?.name || 'Contato'} · {item.email}
+                          </p>
+                          {item.subject && <small>{item.subject}</small>}
+                        </div>
+                      </div>
+                      <div className="tracking-status-grid">
+                        <div
+                          className={
+                            flags.delivered
+                              ? 'tracking-event done'
+                              : 'tracking-event'
+                          }
+                        >
+                          <CheckCheck size={17} />
+                          <span>Entregue</span>
+                          <small>
+                            {eventTime(
+                              item.delivery?.deliveredAt ||
+                                item.delivery?.openedAt ||
+                                item.delivery?.clickedAt,
+                            )}
+                          </small>
+                        </div>
+                        <div
+                          className={
+                            flags.opened
+                              ? 'tracking-event done'
+                              : 'tracking-event'
+                          }
+                        >
+                          <Eye size={17} />
+                          <span>Aberto</span>
+                          <small>
+                            {eventTime(
+                              item.delivery?.openedAt ||
+                                item.delivery?.clickedAt,
+                            )}
+                          </small>
+                        </div>
+                        <div
+                          className={
+                            flags.clicked
+                              ? 'tracking-event done'
+                              : 'tracking-event'
+                          }
+                        >
+                          <MousePointerClick size={17} />
+                          <span>Clicou</span>
+                          <small>{eventTime(item.delivery?.clickedAt)}</small>
+                        </div>
+                        <div
+                          className={
+                            flags.bounced
+                              ? 'tracking-event danger'
+                              : 'tracking-event'
+                          }
+                        >
+                          <CircleX size={17} />
+                          <span>Devolvido</span>
+                          <small>
+                            {eventTime(
+                              item.delivery?.bouncedAt ||
+                                item.delivery?.failedAt ||
+                                item.delivery?.suppressedAt,
+                            )}
+                          </small>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+              <p className="tracking-footnote">
+                “Entregue” confirma que o servidor do destinatário aceitou a
+                mensagem. Aberturas podem ser estimadas por recursos de
+                privacidade do e-mail.
+              </p>
+            </>
+          ) : (
+            <div className="panel empty-history tracking-empty">
+              <Activity size={30} />
+              <h2>Ainda não há e-mails enviados para acompanhar.</h2>
+              <p>
+                Quando uma campanha for enviada, cada contato aparecerá aqui.
+              </p>
+              <Button onClick={() => setTab('campaign')}>
+                Ver campanha <ArrowRight size={16} />
+              </Button>
+            </div>
+          )}
+        </TabsContent>
         <TabsContent value="settings">
           <div className="page-heading">
             <div>
@@ -831,8 +1085,8 @@ export default function Home() {
                       settings?.managed[f.key]
                         ? 'Configurada no Railway'
                         : settings?.connected[f.key]
-                        ? 'Configurada · preencha para substituir'
-                        : 'Cole sua chave aqui'
+                          ? 'Configurada · preencha para substituir'
+                          : 'Cole sua chave aqui'
                     }
                     onChange={(e) =>
                       setCredentials((v) => ({ ...v, [f.key]: e.target.value }))
@@ -851,7 +1105,7 @@ export default function Home() {
                       ? 'Variável do Railway'
                       : settings?.connected[f.key]
                         ? 'Chave salva'
-                      : 'Configuração pendente'}
+                        : 'Configuração pendente'}
                   </span>
                 </section>
               ))}

@@ -24,6 +24,19 @@ export type Company = {
   country: string;
   employees: string;
 };
+export type DeliveryTracking = {
+  acceptedAt?: string;
+  deliveredAt?: string;
+  openedAt?: string;
+  clickedAt?: string;
+  bouncedAt?: string;
+  failedAt?: string;
+  delayedAt?: string;
+  complainedAt?: string;
+  suppressedAt?: string;
+  lastEvent?: string;
+  lastEventAt?: string;
+};
 export type Lead = {
   id: string;
   company: Company;
@@ -43,6 +56,7 @@ export type Lead = {
     | 'sending';
   issue?: string;
   providerId?: string;
+  delivery?: DeliveryTracking;
 };
 export type Campaign = {
   id: string;

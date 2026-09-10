@@ -69,7 +69,12 @@ const argumentsForServer = [
 
 argumentsForServer.push('--var', `APP_ENCRYPTION_KEY:${encryptionKey}`);
 
-for (const name of ['LUSHA_API_KEY', 'ANTHROPIC_API_KEY', 'RESEND_API_KEY']) {
+for (const name of [
+  'LUSHA_API_KEY',
+  'ANTHROPIC_API_KEY',
+  'RESEND_API_KEY',
+  'RESEND_WEBHOOK_SECRET',
+]) {
   if (process.env[name]) {
     argumentsForServer.push('--var', `${name}:${process.env[name]}`);
   }

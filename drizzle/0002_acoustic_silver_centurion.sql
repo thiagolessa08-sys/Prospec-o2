@@ -1,0 +1,1 @@
+CREATE INDEX `idx_delivery_events_campaign_provider` ON `delivery_events` (`campaign_id`,`provider_id`);

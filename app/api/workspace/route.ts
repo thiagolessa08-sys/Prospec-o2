@@ -1,4 +1,5 @@
 import { advance } from '@/lib/pipeline';
+import { syncResendDeliveryEvents } from '@/lib/resend-tracking';
 import { isSameOriginRequest } from '@/lib/request-security';
 import { AppError, campaignInput, textValue } from '@/lib/validation';
 import {
@@ -61,6 +62,12 @@ export async function POST(request: Request) {
       throw new AppError('Solicitação inválida.');
     if (raw.action === 'settings')
       return json({ settings: await saveCredentials(raw) });
+    if (raw.action === 'sync-delivery') {
+      const resendKey = (await getCredentials()).resendKey;
+      if (!resendKey) throw new AppError('Configure o Resend em Conexões.');
+      const sync = await syncResendDeliveryEvents(resendKey);
+      return json({ campaigns: await listCampaigns(), sync });
+    }
     if (raw.action === 'create') {
       if (!raw.input || typeof raw.input !== 'object')
         throw new AppError('Preencha os dados do software.');
