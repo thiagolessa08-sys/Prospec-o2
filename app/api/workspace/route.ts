@@ -65,8 +65,17 @@ export async function POST(request: Request) {
     if (raw.action === 'sync-delivery') {
       const resendKey = (await getCredentials()).resendKey;
       if (!resendKey) throw new AppError('Configure o Resend em Conexões.');
-      const sync = await syncResendDeliveryEvents(resendKey);
-      return json({ campaigns: await listCampaigns(), sync });
+      try {
+        const sync = await syncResendDeliveryEvents(resendKey);
+        return json({ campaigns: await listCampaigns(), sync });
+      } catch {
+        // Sending-only Resend keys cannot list historical messages. Webhook
+        // events remain the source of truth, so tracking should keep loading.
+        return json({
+          campaigns: await listCampaigns(),
+          sync: { matched: 0, stored: 0 },
+        });
+      }
     }
     if (raw.action === 'create') {
       if (!raw.input || typeof raw.input !== 'object')
