@@ -965,6 +965,31 @@ label {
   gap: 12px;
   margin-bottom: 22px;
 }
+.tracking-pending {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border: 1px solid #eadcad;
+  border-radius: 9px;
+  color: #8a6b18;
+  background: #fffaf0;
+}
+.tracking-pending svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.tracking-pending strong {
+  color: #70550f;
+  font-size: 13px;
+}
+.tracking-pending p {
+  margin-top: 3px;
+  color: #8b7947;
+  font-size: 12px;
+  line-height: 1.55;
+}
 .tracking-metric {
   display: grid;
   grid-template-columns: auto 1fr;

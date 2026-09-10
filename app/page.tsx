@@ -222,6 +222,9 @@ export default function Home() {
     campaigns[0];
   const trackedLeads =
     trackingCampaign?.leads.filter((item) => item.providerId) || [];
+  const trackingHasEvents = trackedLeads.some(
+    (item) => item.delivery?.lastEventAt,
+  );
   const trackingTotals = trackedLeads.reduce(
     (totals, item) => {
       const flags = deliveryFlags(item.delivery);
@@ -903,6 +906,19 @@ export default function Home() {
           </div>
           {trackingCampaign && trackedLeads.length ? (
             <>
+              {!trackingHasEvents && (
+                <output className="tracking-pending">
+                  <Activity size={18} />
+                  <div>
+                    <strong>Dados de entrega ainda não sincronizados</strong>
+                    <p>
+                      Os e-mails foram enviados, mas a aplicação ainda não
+                      recebeu o histórico de eventos do Resend. Os traços abaixo
+                      não significam falha na entrega.
+                    </p>
+                  </div>
+                </output>
+              )}
               <section className="tracking-summary" aria-label="Resumo">
                 <article className="panel tracking-metric">
                   <Mail size={18} />
@@ -912,22 +928,30 @@ export default function Home() {
                 <article className="panel tracking-metric delivered">
                   <CheckCheck size={18} />
                   <span>Entregues</span>
-                  <strong>{trackingTotals.delivered}</strong>
+                  <strong>
+                    {trackingHasEvents ? trackingTotals.delivered : '—'}
+                  </strong>
                 </article>
                 <article className="panel tracking-metric opened">
                   <Eye size={18} />
                   <span>Abertos</span>
-                  <strong>{trackingTotals.opened}</strong>
+                  <strong>
+                    {trackingHasEvents ? trackingTotals.opened : '—'}
+                  </strong>
                 </article>
                 <article className="panel tracking-metric clicked">
                   <MousePointerClick size={18} />
                   <span>Cliques</span>
-                  <strong>{trackingTotals.clicked}</strong>
+                  <strong>
+                    {trackingHasEvents ? trackingTotals.clicked : '—'}
+                  </strong>
                 </article>
                 <article className="panel tracking-metric bounced">
                   <CircleX size={18} />
                   <span>Devolvidos</span>
-                  <strong>{trackingTotals.bounced}</strong>
+                  <strong>
+                    {trackingHasEvents ? trackingTotals.bounced : '—'}
+                  </strong>
                 </article>
               </section>
               <div className="tracking-list">
@@ -941,7 +965,9 @@ export default function Home() {
                         ? 'Aberto'
                         : flags.delivered
                           ? 'Entregue'
-                          : 'Enviado';
+                          : item.delivery?.lastEventAt
+                            ? 'Enviado'
+                            : 'Sem dados de entrega';
                   return (
                     <article className="panel tracking-row" key={item.id}>
                       <div className="tracking-person">
