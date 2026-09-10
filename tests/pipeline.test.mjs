@@ -2,7 +2,11 @@ import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { advance, explicitEmployeeRange, sendLead } from '../lib/pipeline.ts';
 import { campaignInput, safeDomain } from '../lib/validation.ts';
-import { workEmail, resolveMainIndustryIds } from '../lib/providers.ts';
+import {
+  workEmail,
+  industryIds,
+  resolveMainIndustryIds,
+} from '../lib/providers.ts';
 import { encrypt, decrypt } from '../lib/crypto.ts';
 
 const originalFetch = globalThis.fetch;
@@ -263,9 +267,36 @@ test('industry labels recover a stale model ID against the live catalog', () => 
     resolveMainIndustryIds(
       [99999],
       ['Retail'],
-      [{ id: 22, name: 'Retail', subIndustries: [{ id: 23, name: 'Groceries' }] }],
+      [
+        {
+          id: 22,
+          name: 'Retail',
+          subIndustries: [{ id: 23, name: 'Groceries' }],
+        },
+      ],
     ),
     [22],
+  );
+});
+test('current Lusha snake-case taxonomy accepts only main industry IDs', () => {
+  const catalog = [
+    {
+      main_industry: 'Administrative & Support Services',
+      main_industry_id: 2,
+      sub_industries: [
+        { value: 'Facilities Services', id: 6 },
+        { value: 'Staffing & Recruiting', id: 9 },
+      ],
+    },
+  ];
+  assert.deepEqual([...industryIds(catalog)], [2]);
+  assert.deepEqual(
+    resolveMainIndustryIds([2], ['Administrative & Support Services'], catalog),
+    [2],
+  );
+  assert.deepEqual(
+    resolveMainIndustryIds([6], ['Facilities Services'], catalog),
+    [2],
   );
 });
 test('empty decision-maker search is an honest terminal result', async () => {

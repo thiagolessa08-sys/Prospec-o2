@@ -241,32 +241,18 @@ export function workEmail(raw: Json): string | undefined {
     ?.email.toLowerCase();
 }
 
-// IDs are taken from the live Lusha catalog, never from model memory.
-export function industryIds(value: unknown): Set<number> {
-  const found = new Set<number>();
-  function walk(v: unknown) {
-    if (Array.isArray(v)) {
-      v.forEach(walk);
-    } else if (v && typeof v === 'object') {
-      for (const [k, x] of Object.entries(v)) {
-        if (
-          /^(id|mainIndustryId|industryId)$/i.test(k) &&
-          /^\d+$/.test(String(x))
-        )
-          found.add(Number(x));
-        if (/^\d+$/.test(k)) found.add(Number(k));
-        walk(x);
-      }
-    }
-  }
-  walk(value);
-  return found;
-}
-
 function industryLabel(value: unknown): string {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return '';
   const record = value as Json;
-  for (const key of ['label', 'name', 'title', 'industry', 'value']) {
+  for (const key of [
+    'label',
+    'name',
+    'title',
+    'industry',
+    'value',
+    'mainIndustry',
+    'main_industry',
+  ]) {
     if (typeof record[key] === 'string' && record[key].trim())
       return record[key].trim();
   }
@@ -278,6 +264,60 @@ function industryNumber(value: unknown): number | undefined {
   if (typeof value === 'string' && /^\d+$/.test(value.trim()))
     return Number(value);
   return undefined;
+}
+
+function industryRecords(catalog: unknown) {
+  const records: { id: number; mainId: number; label: string }[] = [];
+  function walk(value: unknown, parentMainId?: number) {
+    if (Array.isArray(value)) {
+      value.forEach((item) => walk(item, parentMainId));
+      return;
+    }
+    if (!value || typeof value !== 'object') return;
+    const record = value as Json;
+    const explicitMainId =
+      industryNumber(record.mainIndustryId) ??
+      industryNumber(record.main_industry_id);
+    const ownId =
+      industryNumber(record.id) ??
+      explicitMainId ??
+      industryNumber(record.industryId) ??
+      industryNumber(record.industry_id);
+    const mainId = parentMainId ?? explicitMainId ?? ownId;
+    const label = industryLabel(record);
+    if (ownId !== undefined && mainId !== undefined && label)
+      records.push({ id: ownId, mainId, label });
+    for (const [key, child] of Object.entries(record)) {
+      if (
+        [
+          'id',
+          'mainIndustryId',
+          'main_industry_id',
+          'industryId',
+          'industry_id',
+        ].includes(key)
+      )
+        continue;
+      if (
+        key === 'subIndustries' ||
+        key === 'subindustries' ||
+        key === 'sub_industries'
+      )
+        walk(child, mainId);
+      else if (typeof child === 'object') walk(child, parentMainId);
+    }
+  }
+  walk(catalog);
+  return records;
+}
+
+// Only top-level IDs from the live Lusha catalog are accepted as main industries.
+export function industryIds(value: unknown): Set<number> {
+  return new Set(
+    industryRecords(value)
+      .filter((entry) => entry.id === entry.mainId)
+      .map((entry) => entry.mainId),
+  );
 }
 
 function normalizeIndustryLabel(value: string) {
@@ -300,33 +340,12 @@ export function resolveMainIndustryIds(
   labels: unknown,
   catalog: unknown,
 ): number[] {
-  const records: { id: number; mainId: number; label: string }[] = [];
-  function walk(value: unknown, parentMainId?: number) {
-    if (Array.isArray(value)) {
-      value.forEach((item) => walk(item, parentMainId));
-      return;
-    }
-    if (!value || typeof value !== 'object') return;
-    const record = value as Json;
-    const ownId =
-      industryNumber(record.id) ??
-      industryNumber(record.mainIndustryId) ??
-      industryNumber(record.industryId);
-    const mainId = parentMainId ?? ownId;
-    const label = industryLabel(record);
-    if (ownId !== undefined && mainId !== undefined && label)
-      records.push({ id: ownId, mainId, label });
-    for (const [key, child] of Object.entries(record)) {
-      if (['id', 'mainIndustryId', 'industryId'].includes(key)) continue;
-      if (key === 'subIndustries' || key === 'subindustries')
-        walk(child, ownId ?? parentMainId);
-      else if (typeof child === 'object') walk(child, parentMainId);
-    }
-  }
-  walk(catalog);
+  const records = industryRecords(catalog);
 
   const mainIds = new Set(
-    records.filter((entry) => entry.id === entry.mainId).map((entry) => entry.id),
+    records
+      .filter((entry) => entry.id === entry.mainId)
+      .map((entry) => entry.id),
   );
   const requested = Array.isArray(ids)
     ? ids.map(industryNumber).filter((id): id is number => id !== undefined)
@@ -342,21 +361,22 @@ export function resolveMainIndustryIds(
   for (const label of requestedLabels) {
     const normalized = normalizeIndustryLabel(label);
     if (!normalized) continue;
-    const exact = canonicalRecords.filter((entry) => entry.normalized === normalized);
+    const exact = canonicalRecords.filter(
+      (entry) => entry.normalized === normalized,
+    );
     const candidates = exact.length
       ? exact
       : canonicalRecords.filter(
           (entry) =>
             entry.normalized.length >= 4 &&
-            (entry.normalized.includes(normalized) || normalized.includes(entry.normalized)),
+            (entry.normalized.includes(normalized) ||
+              normalized.includes(entry.normalized)),
         );
     const mainId = candidates.length === 1 ? candidates[0].mainId : undefined;
-    if (mainId !== undefined && !resolved.includes(mainId)) resolved.push(mainId);
+    if (mainId !== undefined && !resolved.includes(mainId))
+      resolved.push(mainId);
   }
-  // Keep the old strict behavior when neither the IDs nor labels map to the
-  // current catalog. The caller will stop before a paid Lusha search.
+  // Every returned value is a top-level ID from the current live catalog.
   if (!resolved.length || resolved.length > 4) return [];
-  if (requested.length && resolved.length < requested.length && !requested.every((id) => mainIds.has(id)))
-    return [];
   return resolved;
 }
