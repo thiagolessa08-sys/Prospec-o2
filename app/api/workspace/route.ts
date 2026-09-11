@@ -10,6 +10,8 @@ import {
   withCampaign,
   getCredentials,
   deliveryStore,
+  updateCampaign,
+  deleteCampaign,
 } from '@/lib/storage';
 
 const headers = {
@@ -109,6 +111,17 @@ export async function POST(request: Request) {
     )
       throw new AppError('Ação desconhecida.');
     const id = textValue(raw.id, 'Campanha', 36, 36);
+    if (raw.action === 'delete-campaign') {
+      await deleteCampaign(id);
+      return json({ campaigns: await listCampaigns() });
+    }
+    if (raw.action === 'edit-campaign') {
+      if (!raw.input || typeof raw.input !== 'object')
+        throw new AppError('Preencha os dados da campanha.');
+      const input = campaignInput(raw.input as Record<string, unknown>);
+      const campaign = await updateCampaign(id, input);
+      return json({ campaign, campaigns: await listCampaigns() });
+    }
     const campaign = await withCampaign(id, async (c) => {
       if (raw.action === 'advance')
         return advance(c, await getCredentials(), deliveryStore);

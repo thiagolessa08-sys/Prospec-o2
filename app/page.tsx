@@ -18,12 +18,14 @@ import {
   Mail,
   MousePointerClick,
   Orbit,
+  Pencil,
   Play,
   Plus,
   RefreshCw,
   Settings2,
   Sparkles,
   Target,
+  Trash2,
   Users,
   X,
 } from 'lucide-react';
@@ -40,7 +42,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import type { Campaign, SettingsView } from '@/lib/types';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import type { Campaign, CampaignInput, SettingsView } from '@/lib/types';
 import { deliveryFlags } from '@/lib/delivery-tracking';
 
 async function api(body?: unknown) {
@@ -133,6 +145,11 @@ export default function Home() {
   const [trackingLoading, setTrackingLoading] = useState(false);
   const [trackingRefresh, setTrackingRefresh] = useState(0);
   const [edit, setEdit] = useState({ subject: '', body: '' });
+  const [campaignEdit, setCampaignEdit] = useState<Campaign | null>(null);
+  const [campaignDraft, setCampaignDraft] = useState<CampaignInput>(blank);
+  const [campaignToDelete, setCampaignToDelete] = useState<Campaign | null>(
+    null,
+  );
   const stop = useRef(false);
   const refresh = async () => {
     const data = await api();
@@ -189,6 +206,10 @@ export default function Home() {
   }, [tab, settings?.connected.resendKey, trackingRefresh]);
   const field = (key: keyof typeof blank, value: string | boolean) =>
     setForm((f) => ({ ...f, [key]: value }));
+  const campaignField = (
+    key: keyof CampaignInput,
+    value: string | boolean,
+  ) => setCampaignDraft((current) => ({ ...current, [key]: value }));
   const safe = async (fn: () => Promise<void>) => {
     setBusy(true);
     setError('');
@@ -816,36 +837,61 @@ export default function Home() {
           </div>
           <div className="history-list">
             {campaigns.map((c) => (
-              <button
+              <div
                 className="panel history-item"
                 key={c.id}
-                disabled={busy}
-                onClick={() => {
-                  setActive(c);
-                  setSelected(null);
-                  setTab('campaign');
-                }}
               >
-                <span className="company-initial">
-                  <Target />
-                </span>
-                <div>
-                  <h3>{c.input.name}</h3>
-                  <p>
-                    {new Date(c.createdAt).toLocaleDateString('pt-BR')} ·{' '}
-                    {c.input.market}
-                  </p>
+                <button
+                  className="history-main"
+                  disabled={busy}
+                  onClick={() => {
+                    setActive(c);
+                    setSelected(null);
+                    setTab('campaign');
+                  }}
+                >
+                  <span className="company-initial">
+                    <Target />
+                  </span>
+                  <div>
+                    <h3>{c.input.name}</h3>
+                    <p>
+                      {new Date(c.createdAt).toLocaleDateString('pt-BR')} ·{' '}
+                      {c.input.market}
+                    </p>
+                  </div>
+                  <span>{c.leads.length} empresas</span>
+                  <span className="status">
+                    {c.stage === 'done'
+                      ? 'Concluída'
+                      : c.stage === 'review'
+                        ? 'Pronta para revisão'
+                        : 'Em preparação'}
+                  </span>
+                  <ArrowRight size={18} />
+                </button>
+                <div className="history-actions">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => {
+                      setCampaignEdit(c);
+                      setCampaignDraft({ ...c.input });
+                    }}
+                  >
+                    <Pencil size={14} /> Editar
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => setCampaignToDelete(c)}
+                  >
+                    <Trash2 size={14} /> Excluir
+                  </Button>
                 </div>
-                <span>{c.leads.length} empresas</span>
-                <span className="status">
-                  {c.stage === 'done'
-                    ? 'Concluída'
-                    : c.stage === 'review'
-                      ? 'Pronta para revisão'
-                      : 'Em preparação'}
-                </span>
-                <ArrowRight size={18} />
-              </button>
+              </div>
             ))}
             {!campaigns.length && (
               <div className="panel empty-history">
@@ -865,6 +911,178 @@ export default function Home() {
               </div>
             )}
           </div>
+          {campaignEdit && (
+            <Dialog
+              open
+              onOpenChange={(open) => {
+                if (!open) setCampaignEdit(null);
+              }}
+            >
+              <DialogContent className="campaign-editor max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-2xl">
+                <DialogHeader>
+                  <p className="eyebrow">CONFIGURAÇÃO DA CAMPANHA</p>
+                  <DialogTitle>Editar campanha</DialogTitle>
+                  <DialogDescription>
+                    Atualize os dados usados para identificar a campanha e o
+                    remetente dos e-mails.
+                  </DialogDescription>
+                </DialogHeader>
+                <form
+                  className="campaign-edit-form"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void safe(async () => {
+                      const data = await api({
+                        action: 'edit-campaign',
+                        id: campaignEdit.id,
+                        input: campaignDraft,
+                      });
+                      setCampaigns(data.campaigns);
+                      setActive((current) =>
+                        current?.id === campaignEdit.id
+                          ? data.campaign
+                          : current,
+                      );
+                      setCampaignEdit(null);
+                      setNotice('Campanha atualizada.');
+                    });
+                  }}
+                >
+                  <label htmlFor="campaign-edit-name">Nome do software</label>
+                  <Input
+                    id="campaign-edit-name"
+                    required
+                    maxLength={120}
+                    value={campaignDraft.name}
+                    onChange={(event) =>
+                      campaignField('name', event.target.value)
+                    }
+                  />
+                  <label htmlFor="campaign-edit-description">
+                    Descrição do software
+                  </label>
+                  <Textarea
+                    id="campaign-edit-description"
+                    required
+                    minLength={60}
+                    maxLength={12000}
+                    value={campaignDraft.description}
+                    onChange={(event) =>
+                      campaignField('description', event.target.value)
+                    }
+                  />
+                  <label htmlFor="campaign-edit-market">
+                    Mercado e região
+                  </label>
+                  <Input
+                    id="campaign-edit-market"
+                    required
+                    maxLength={300}
+                    value={campaignDraft.market}
+                    onChange={(event) =>
+                      campaignField('market', event.target.value)
+                    }
+                  />
+                  <div className="two-columns">
+                    <div>
+                      <label htmlFor="campaign-edit-sender-name">
+                        Nome do remetente
+                      </label>
+                      <Input
+                        id="campaign-edit-sender-name"
+                        required
+                        maxLength={100}
+                        value={campaignDraft.senderName}
+                        onChange={(event) =>
+                          campaignField('senderName', event.target.value)
+                        }
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="campaign-edit-sender-email">
+                        E-mail de envio
+                      </label>
+                      <Input
+                        id="campaign-edit-sender-email"
+                        type="email"
+                        required
+                        value={campaignDraft.senderEmail}
+                        onChange={(event) =>
+                          campaignField('senderEmail', event.target.value)
+                        }
+                      />
+                    </div>
+                  </div>
+                  <label htmlFor="campaign-edit-signature">
+                    Assinatura e convite
+                  </label>
+                  <Textarea
+                    id="campaign-edit-signature"
+                    required
+                    maxLength={1500}
+                    value={campaignDraft.signature}
+                    onChange={(event) =>
+                      campaignField('signature', event.target.value)
+                    }
+                  />
+                  <div className="campaign-edit-footer">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setCampaignEdit(null)}
+                    >
+                      Cancelar
+                    </Button>
+                    <Button type="submit" disabled={busy}>
+                      Salvar campanha
+                    </Button>
+                  </div>
+                </form>
+              </DialogContent>
+            </Dialog>
+          )}
+          <AlertDialog
+            open={Boolean(campaignToDelete)}
+            onOpenChange={(open) => {
+              if (!open) setCampaignToDelete(null);
+            }}
+          >
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Excluir campanha?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  A campanha “{campaignToDelete?.input.name}”, seus contatos e
+                  mensagens salvas serão removidos permanentemente.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction
+                  variant="destructive"
+                  disabled={busy}
+                  onClick={() => {
+                    if (!campaignToDelete) return;
+                    const id = campaignToDelete.id;
+                    void safe(async () => {
+                      const data = await api({
+                        action: 'delete-campaign',
+                        id,
+                      });
+                      setCampaigns(data.campaigns);
+                      if (active?.id === id) {
+                        setActive(null);
+                        setTab('campaign');
+                      }
+                      setCampaignToDelete(null);
+                      setNotice('Campanha excluída.');
+                    });
+                  }}
+                >
+                  Excluir campanha
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </TabsContent>
         <TabsContent value="tracking">
           <div className="page-heading tracking-heading">

@@ -167,6 +167,43 @@ export async function createCampaign(c: Campaign) {
     .run();
   return c;
 }
+
+export async function updateCampaign(
+  id: string,
+  input: Campaign['input'],
+) {
+  return withCampaign(id, async (campaign) => {
+    if (campaign.stage === 'send')
+      throw new AppError(
+        'A campanha está enviando e-mails. Aguarde o fim do envio para editá-la.',
+        409,
+      );
+    campaign.input = input;
+    return campaign;
+  });
+}
+
+export async function deleteCampaign(id: string) {
+  await resetOrphanedLeases();
+  const row = await database()
+    .prepare('SELECT lease_until AS leaseUntil FROM campaigns WHERE id=?')
+    .bind(id)
+    .first<{ leaseUntil: number }>();
+  if (!row) throw new AppError('Campanha não encontrada.', 404);
+  if (row.leaseUntil >= Date.now())
+    throw new AppError(
+      'Esta campanha está sendo processada. Aguarde antes de excluí-la.',
+      409,
+    );
+  await database().batch([
+    database()
+      .prepare('DELETE FROM delivery_events WHERE campaign_id=?')
+      .bind(id),
+    database().prepare('DELETE FROM deliveries WHERE campaign_id=?').bind(id),
+    database().prepare('DELETE FROM campaigns WHERE id=?').bind(id),
+  ]);
+}
+
 export async function withCampaign(
   id: string,
   fn: (c: Campaign) => Promise<Campaign>,
