@@ -924,7 +924,8 @@ export default function Home() {
                   <DialogTitle>Editar campanha</DialogTitle>
                   <DialogDescription>
                     Atualize os dados usados para identificar a campanha e o
-                    remetente dos e-mails.
+                    remetente dos e-mails. Empresas e mensagens já geradas serão
+                    mantidas como estão.
                   </DialogDescription>
                 </DialogHeader>
                 <form
